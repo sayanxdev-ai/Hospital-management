@@ -1,5 +1,10 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import { Droplets, MapPin, Phone } from 'lucide-react';
+import { addAdminRequest } from '@/app/admin-dashboard/lib/adminData';
+import { recordAdminActivity } from '@/app/admin-dashboard/lib/activityStorage';
+import { getStoredSession } from '@/lib/auth';
 
 const bloodGroups = [
   { group: 'A+', units: 312, banks: 8, status: 'available' },
@@ -26,6 +31,32 @@ const statusConfig: Record<string, { label: string; dot: string; badge: string }
 };
 
 export default function BloodGroupGrid() {
+  const [requestMessage, setRequestMessage] = useState('');
+
+  const requestBlood = (group: string) => {
+    const session = getStoredSession();
+    if (!session) {
+      window.location.href = '/sign-up-login-screen';
+      return;
+    }
+    const id = `request-${Date.now()}`;
+    addAdminRequest({
+      id,
+      type: 'Blood',
+      patientName: session.name || session.email.split('@')[0],
+      item: group,
+      quantity: '1 unit',
+      hospital: 'Public Blood Request',
+      priority: 'Urgent',
+      status: 'Pending',
+      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      contact: session.email,
+      requesterEmail: session.email,
+    });
+    recordAdminActivity({ category: 'request', tone: 'warning', message: `Blood request submitted for ${group} by ${session.name || session.email}.` });
+    setRequestMessage(`Request submitted for ${group}. Track its status in My Requests & Orders.`);
+  };
+
   return (
     <section id="blood-bank" className="py-20 bg-card border-y border-border">
       <div className="max-w-screen-2xl mx-auto px-6 lg:px-10">
@@ -43,6 +74,7 @@ export default function BloodGroupGrid() {
             ))}
           </div>
         </div>
+        {requestMessage && <p role="status" className="mb-4 rounded-lg border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">{requestMessage}</p>}
 
         {/* Blood group grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-12">
@@ -64,6 +96,9 @@ export default function BloodGroupGrid() {
                 </div>
                 <p className="text-xl font-bold text-foreground tabular-nums mb-0.5">{bg.units}</p>
                 <p className="text-xs text-muted-foreground">units</p>
+                <button type="button" onClick={() => requestBlood(bg.group)} className="mt-2 text-xs font-semibold text-primary hover:underline">
+                  Request blood
+                </button>
                 <div className={`mt-2 badge-base ${cfg.badge} justify-center w-full`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                   {bg.status === 'out' ? 'None' : `${bg.banks} banks`}

@@ -13,8 +13,6 @@ type RegisterFormData = {
   terms: boolean;
 };
 
-type RegisteredAccount = Pick<RegisterFormData, 'name' | 'email' | 'password' | 'role'>;
-
 interface RegisterFormProps {
   onSwitchToLogin: () => void;
 }
@@ -24,6 +22,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<RegisterFormData>({
     defaultValues: { role: 'user' }
@@ -32,24 +31,38 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const password = watch('password');
   const selectedRole = watch('role');
 
-  const onSubmit = (data: RegisterFormData) => {
+  const onSubmit = async (data: RegisterFormData) => {
     setLoading(true);
-    // BACKEND INTEGRATION POINT: POST /api/auth/register with form data
-    setTimeout(() => {
-      const accounts: RegisteredAccount[] = JSON.parse(localStorage.getItem('mediconnect-accounts') || '[]');
-      const accountExists = accounts.some((account) => account.email.toLowerCase() === data.email.toLowerCase());
+    setError('');
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name.trim(),
+          email: data.email.trim(),
+          password: data.password,
+          role: data.role,
+        }),
+      });
+      const result = await response.json() as {
+        account?: { email: string; role: string; name: string };
+        error?: string;
+      };
 
-      if (accountExists) {
-        setLoading(false);
-        return;
+      if (!response.ok || !result.account) {
+        throw new Error(result.error || 'Could not save account.');
       }
 
-      accounts.push({ name: data.name, email: data.email, password: data.password, role: data.role });
-      localStorage.setItem('mediconnect-accounts', JSON.stringify(accounts));
-      setStoredSession({ email: data.email, role: data.role, name: data.name });
-      setLoading(false);
+      const account = result.account;
+      setStoredSession({ email: account.email, role: account.role, name: account.name });
       setSuccess(true);
-    }, 1200);
+    } catch (registrationError) {
+      console.error('Could not save registered account.', registrationError);
+      setError(registrationError instanceof Error ? registrationError.message : 'Could not save account.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {
@@ -70,6 +83,12 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   return (
     <div className="fade-in">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {error && (
+          <div role="alert" className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-3 text-sm text-danger font-medium">
+            {error}
+          </div>
+        )}
+
         {/* Name */}
         <div>
           <label className="label-text" htmlFor="reg-name">Full Name</label>

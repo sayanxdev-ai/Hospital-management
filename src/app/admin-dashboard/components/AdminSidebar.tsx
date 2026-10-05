@@ -12,6 +12,7 @@ const navGroups = [
     items: [
       { icon: LayoutDashboard, label: 'Dashboard', href: '/admin-dashboard', key: 'dashboard', badge: null },
       { icon: Activity, label: 'Activity Log', href: '/admin-dashboard/activity', key: 'activity', badge: null },
+      { icon: Package, label: 'My Requests & Orders', href: '/admin-dashboard/my-orders', key: 'my-orders', badge: null },
     ]
   },
   {

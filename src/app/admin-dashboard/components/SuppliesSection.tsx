@@ -4,17 +4,19 @@ import { Search, Plus, Edit2, Trash2, Check, X, Download } from 'lucide-react';
 import { updateOutOfStockCount } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
 import useSubmittedPurchaseOrders from './SubmittedPurchaseOrders';
+import PurchaseOrderActions from './PurchaseOrderActions';
+import { usePersistentInventory, type InventoryRecord } from '../lib/inventoryStorage';
 
-type SupplyStatus = 'Available' | 'Low Stock' | 'Out of Stock';
+type SupplyStatus = 'Available' | 'Low Stock' | 'Out of Stock' | 'Expired';
 
-interface Supply {
-  id: string;
-  name: string;
+interface Supply extends InventoryRecord {
   category: string;
-  quantity: number;
   minimumStock: number;
   location: string;
   status: SupplyStatus;
+  expiryDate?: string;
+  batchNumber?: string;
+  supplier?: string;
 }
 
 const initialSupplies: Supply[] = [
@@ -33,19 +35,34 @@ const initialSupplies: Supply[] = [
   { id: 's13', name: 'IV Cannula 20G', category: 'IV Supplies', quantity: 0, minimumStock: 100, location: 'Store C', status: 'Out of Stock' },
   { id: 's14', name: 'Urine Bags 2L', category: 'Urological', quantity: 60, minimumStock: 20, location: 'Store H', status: 'Available' },
   { id: 's15', name: 'Kidney Trays (SS)', category: 'Surgical', quantity: 35, minimumStock: 10, location: 'Store I', status: 'Available' },
+  { id: 's16', name: 'Surgical Scissors (Straight)', category: 'Surgical', quantity: 24, minimumStock: 6, location: 'Store I', status: 'Available' },
+  { id: 's17', name: 'Surgical Scissors (Curved)', category: 'Surgical', quantity: 18, minimumStock: 6, location: 'Store I', status: 'Available' },
+  { id: 's18', name: 'Sterilization Pouches (100pk)', category: 'Sterilization', quantity: 120, minimumStock: 25, location: 'Store J', status: 'Available' },
+  { id: 's19', name: 'Autoclave Indicator Tape', category: 'Sterilization', quantity: 40, minimumStock: 10, location: 'Store J', status: 'Available' },
+  { id: 's20', name: 'Sterile Dressing Packs', category: 'Wound Care', quantity: 75, minimumStock: 20, location: 'Store D', status: 'Available' },
+  { id: 's21', name: 'Crepe Bandages 10cm', category: 'Wound Care', quantity: 100, minimumStock: 25, location: 'Store D', status: 'Available' },
+  { id: 's22', name: 'Medical Adhesive Tape 2.5cm', category: 'Wound Care', quantity: 90, minimumStock: 20, location: 'Store D', status: 'Available' },
+  { id: 's23', name: '2ml Syringes', category: 'Injection', quantity: 400, minimumStock: 100, location: 'Store C', status: 'Available' },
+  { id: 's24', name: '10ml Syringes', category: 'Injection', quantity: 350, minimumStock: 100, location: 'Store C', status: 'Available' },
+  { id: 's25', name: 'Disposable Surgical Gowns', category: 'PPE', quantity: 100, minimumStock: 25, location: 'Store A', status: 'Available' },
+  { id: 's26', name: 'Face Shields', category: 'PPE', quantity: 80, minimumStock: 20, location: 'Store B', status: 'Available' },
 ];
 
-const getStatus = (qty: number, min: number): SupplyStatus => qty === 0 ? 'Out of Stock' : qty <= min ? 'Low Stock' : 'Available';
+const getStatus = (qty: number, min: number, expiryDate?: string): SupplyStatus => {
+  if (expiryDate && expiryDate < new Date().toISOString().slice(0, 10)) return 'Expired';
+  return qty === 0 ? 'Out of Stock' : qty <= min ? 'Low Stock' : 'Available';
+};
 
 const statusConfig: Record<SupplyStatus, string> = {
   'Available': 'bg-success/10 text-success border border-success/20',
   'Low Stock': 'bg-warning/10 text-warning border border-warning/20',
   'Out of Stock': 'bg-danger/10 text-danger border border-danger/20',
+  'Expired': 'bg-danger/10 text-danger border border-danger/20',
 };
 
 export default function SuppliesSection() {
   const purchaseOrders = useSubmittedPurchaseOrders('Supplies');
-  const [supplies, setSupplies] = useState<Supply[]>(initialSupplies);
+  const [supplies, setSupplies] = usePersistentInventory<Supply>('supplies', initialSupplies);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<'All' | SupplyStatus>('All');
@@ -62,14 +79,14 @@ export default function SuppliesSection() {
 
   const filtered = useMemo(() => supplies.filter(s => {
     const q = search.toLowerCase();
-    const matchSearch = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q) || s.location.toLowerCase().includes(q);
+    const matchSearch = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q) || s.location.toLowerCase().includes(q) || (s.batchNumber || '').toLowerCase().includes(q) || (s.supplier || '').toLowerCase().includes(q);
     const matchCat = catFilter === 'All' || s.category === catFilter;
     const matchStatus = statusFilter === 'All' || s.status === statusFilter;
     return matchSearch && matchCat && matchStatus;
   }), [supplies, search, catFilter, statusFilter]);
 
   const handleSave = (sup: Supply) => {
-    const updated = { ...sup, status: getStatus(sup.quantity, sup.minimumStock) };
+    const updated = { ...sup, status: getStatus(sup.quantity, sup.minimumStock, sup.expiryDate) };
     recordAdminActivity({
       category: 'supply',
       tone: updated.status === 'Out of Stock' ? 'danger' : 'success',
@@ -88,10 +105,22 @@ export default function SuppliesSection() {
     showToast('Supply deleted');
   };
 
+  const adjustStock = (supply: Supply, delta: number) => {
+    if (supply.quantity + delta < 0) return;
+    const updated = { ...supply, quantity: supply.quantity + delta };
+    updated.status = getStatus(updated.quantity, updated.minimumStock, updated.expiryDate);
+    setSupplies(previous => previous.map(item => item.id === supply.id ? updated : item));
+    recordAdminActivity({
+      category: 'supply',
+      tone: delta < 0 ? 'warning' : 'info',
+      message: `Stock adjusted for ${supply.name}: ${supply.quantity} → ${updated.quantity} (batch ${supply.batchNumber || 'not recorded'}).`,
+    });
+  };
+
   const exportToExcel = async () => {
     try {
       const XLSX = await import('xlsx');
-      const data = supplies.map(s => ({ 'Item Name': s.name, 'Category': s.category, 'Quantity': s.quantity, 'Minimum Stock': s.minimumStock, 'Location': s.location, 'Status': s.status }));
+      const data = supplies.map(s => ({ 'Item Name': s.name, 'Category': s.category, 'Quantity': s.quantity, 'Minimum Stock': s.minimumStock, 'Batch Number': s.batchNumber || '', 'Expiry Date': s.expiryDate || '', 'Supplier': s.supplier || '', 'Location': s.location, 'Status': getStatus(s.quantity, s.minimumStock, s.expiryDate) }));
       const ws = XLSX.utils.json_to_sheet(data);
       ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 14 }];
       const wb = XLSX.utils.book_new();
@@ -107,7 +136,7 @@ export default function SuppliesSection() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Medical Supplies</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{supplies.length} items · {supplies.filter(s => s.status === 'Low Stock').length} low stock · {supplies.filter(s => s.status === 'Out of Stock').length} out of stock</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{supplies.length} items · {supplies.filter(s => s.status === 'Low Stock').length} low stock · {supplies.filter(s => s.status === 'Out of Stock').length} out of stock · {supplies.filter(s => s.expiryDate && s.expiryDate >= new Date().toISOString().slice(0, 10) && s.expiryDate <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).length} expiring within 30 days</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted transition-colors">
@@ -141,6 +170,8 @@ export default function SuppliesSection() {
                 <th className="table-header-cell">Category</th>
                 <th className="table-header-cell">Quantity</th>
                 <th className="table-header-cell">Min. Stock</th>
+                <th className="table-header-cell">Batch / Expiry</th>
+                <th className="table-header-cell">Supplier</th>
                 <th className="table-header-cell">Location</th>
                 <th className="table-header-cell">Status</th>
                 <th className="table-header-cell">Actions</th>
@@ -148,17 +179,26 @@ export default function SuppliesSection() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 && purchaseOrders.length === 0 ? (
-                <tr><td colSpan={7} className="table-cell text-center text-muted-foreground py-12">No supplies found</td></tr>
+                <tr><td colSpan={9} className="table-cell text-center text-muted-foreground py-12">No supplies found</td></tr>
               ) : filtered.map(s => (
                 <tr key={s.id} className="table-row-hover group">
                   <td className="table-cell font-semibold text-foreground">{s.name}</td>
                   <td className="table-cell"><span className="badge-base bg-secondary text-primary border border-primary/20 text-xs">{s.category}</span></td>
                   <td className="table-cell tabular-nums font-bold">{s.quantity}</td>
                   <td className="table-cell tabular-nums text-muted-foreground">{s.minimumStock}</td>
+                  <td className="table-cell text-xs text-muted-foreground">{s.batchNumber || '—'}{s.expiryDate ? ` / ${s.expiryDate}` : ''}</td>
+                  <td className="table-cell text-muted-foreground">{s.supplier || '—'}</td>
                   <td className="table-cell text-muted-foreground">{s.location}</td>
-                  <td className="table-cell"><span className={`badge-base text-xs ${statusConfig[s.status]}`}>{s.status}</span></td>
+                  <td className="table-cell">
+                    {(() => {
+                      const currentStatus = getStatus(s.quantity, s.minimumStock, s.expiryDate);
+                      return <span className={`badge-base text-xs ${statusConfig[currentStatus]}`}>{currentStatus}</span>;
+                    })()}
+                  </td>
                   <td className="table-cell">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => adjustStock(s, -1)} className="btn-icon text-muted-foreground hover:text-warning" title="Reduce stock by one"><span aria-hidden="true">−</span></button>
+                      <button onClick={() => adjustStock(s, 1)} className="btn-icon text-muted-foreground hover:text-success" title="Increase stock by one"><Plus size={15} /></button>
                       <button onClick={() => setModal({ mode: 'edit', sup: s })} className="btn-icon text-muted-foreground hover:text-warning"><Edit2 size={15} /></button>
                       <button onClick={() => setDeleteConfirm(s.id)} className="btn-icon text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
                     </div>
@@ -166,19 +206,21 @@ export default function SuppliesSection() {
                 </tr>
               ))}
               {purchaseOrders.map(order => (
-                <tr key={order.id} className="bg-primary/5 border-t-2 border-primary/20">
+                <tr key={order.id} className="bg-primary/5 border-t-2 border-primary/20 group">
                   <td className="table-cell font-semibold text-foreground">{order.item}</td>
                   <td className="table-cell"><span className="badge-base bg-secondary text-primary border border-primary/20 text-xs">Staff purchase order</span></td>
                   <td className="table-cell tabular-nums font-bold">{order.quantity}</td>
                   <td className="table-cell tabular-nums text-muted-foreground">—</td>
+                  <td className="table-cell text-xs text-muted-foreground">{order.batchNumber || '—'}{order.expiryDate ? ` / ${order.expiryDate}` : ''}</td>
                   <td className="table-cell text-muted-foreground">{order.hospital}</td>
+                  <td className="table-cell text-muted-foreground">—</td>
                   <td className="table-cell">
                     <div className="space-y-1">
-                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.status}</span>
+                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.purchaseStatus || 'Pending Approval'}</span>
                       <span className={`badge-base text-xs ${order.availability === 'Out of Stock' ? 'bg-danger/10 text-danger border border-danger/20' : 'bg-success/10 text-success border border-success/20'}`}>{order.availability ?? 'Available'}</span>
                     </div>
                   </td>
-                  <td className="table-cell text-xs text-muted-foreground">Purchase order · {order.date}</td>
+                  <td className="table-cell"><PurchaseOrderActions order={order} /></td>
                 </tr>
               ))}
             </tbody>
@@ -216,7 +258,7 @@ export default function SuppliesSection() {
 }
 
 function SupplyForm({ sup, onClose, onSave }: { sup: Supply | null; onClose: () => void; onSave: (s: Supply) => void }) {
-  const [form, setForm] = useState<Supply>(sup || { id: `s${Date.now()}`, name: '', category: 'PPE', quantity: 0, minimumStock: 10, location: '', status: 'Available' });
+  const [form, setForm] = useState<Supply>(sup || { id: `s${Date.now()}`, name: '', category: 'PPE', quantity: 0, minimumStock: 10, location: '', batchNumber: '', expiryDate: '', supplier: '', status: 'Available' });
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form); }} className="p-6 space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -227,7 +269,7 @@ function SupplyForm({ sup, onClose, onSave }: { sup: Supply | null; onClose: () 
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1.5">Category</label>
           <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            {['PPE', 'Injection', 'IV Supplies', 'Wound Care', 'Diagnostic', 'Respiratory', 'Antiseptic', 'Urological', 'Surgical', 'Other'].map(c => <option key={c}>{c}</option>)}
+            {['PPE', 'Injection', 'IV Supplies', 'Wound Care', 'Diagnostic', 'Respiratory', 'Antiseptic', 'Urological', 'Surgical', 'Sterilization', 'Other'].map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
@@ -241,6 +283,18 @@ function SupplyForm({ sup, onClose, onSave }: { sup: Supply | null; onClose: () 
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1.5">Minimum Stock</label>
           <input type="number" value={form.minimumStock} onChange={e => setForm(f => ({ ...f, minimumStock: parseInt(e.target.value) || 0 }))} min={0} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Batch Number</label>
+          <input type="text" value={form.batchNumber || ''} onChange={e => setForm(f => ({ ...f, batchNumber: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Expiry Date</label>
+          <input type="date" value={form.expiryDate || ''} onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Supplier</label>
+          <input type="text" value={form.supplier || ''} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
       </div>
       <div className="flex justify-end gap-3 pt-2">

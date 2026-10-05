@@ -7,6 +7,7 @@ export interface AdminActivity {
   createdAt: string;
   category: ActivityCategory;
   tone: ActivityTone;
+  actor?: string;
 }
 
 const ACTIVITY_STORAGE_KEY = 'mediconnect-admin-activity';
@@ -49,6 +50,16 @@ export function recordAdminActivity(
     ...activity,
     id: `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
+    actor: (() => {
+      try {
+        const stored = window.localStorage.getItem('mediconnect-session');
+        const session = stored ? JSON.parse(stored) as { name?: string; email?: string } : null;
+        return session?.name?.trim() || session?.email || 'Unknown user';
+      } catch (error) {
+        console.error('Could not identify the user for the audit entry.', error);
+        return 'Unknown user';
+      }
+    })(),
   };
 
   try {

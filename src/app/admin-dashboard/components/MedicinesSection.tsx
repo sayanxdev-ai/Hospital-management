@@ -1,19 +1,18 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, Eye, Check, X, Download, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Plus, Minus, Edit2, Trash2, Eye, Check, X, Download, ChevronUp, ChevronDown } from 'lucide-react';
 import { updateOutOfStockCount } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
 import useSubmittedPurchaseOrders from './SubmittedPurchaseOrders';
+import PurchaseOrderActions from './PurchaseOrderActions';
+import { usePersistentInventory, type InventoryRecord } from '../lib/inventoryStorage';
 
-type MedStatus = 'Available' | 'Low Stock' | 'Out of Stock';
+type MedStatus = 'Available' | 'Low Stock' | 'Out of Stock' | 'Expired';
 
-interface Medicine {
-  id: string;
-  name: string;
+interface Medicine extends InventoryRecord {
   genericName: string;
   category: string;
   manufacturer: string;
-  quantity: number;
   price: number;
   expiryDate: string;
   prescriptionRequired: boolean;
@@ -37,19 +36,32 @@ const initialMedicines: Medicine[] = [
   { id: 'm13', name: 'Vitamin D3 60000IU', genericName: 'Cholecalciferol', category: 'Vitamin', manufacturer: 'Mankind', quantity: 180, price: 35, expiryDate: '2027-07-31', prescriptionRequired: false, location: 'Shelf G1', status: 'Available' },
   { id: 'm14', name: 'Vitamin B12 500mcg', genericName: 'Cyanocobalamin', category: 'Vitamin', manufacturer: 'Abbott', quantity: 0, price: 28, expiryDate: '2027-03-31', prescriptionRequired: false, location: 'Shelf G2', status: 'Out of Stock' },
   { id: 'm15', name: 'Ondansetron 4mg', genericName: 'Ondansetron HCl', category: 'Antiemetic', manufacturer: 'Cipla', quantity: 95, price: 30, expiryDate: '2027-06-30', prescriptionRequired: true, location: 'Shelf H1', status: 'Available' },
+  { id: 'm16', name: 'Dolo 650mg', genericName: 'Paracetamol', category: 'Analgesic', manufacturer: 'Micro Labs', quantity: 300, price: 18, expiryDate: '2027-12-31', prescriptionRequired: false, location: 'Shelf A4', status: 'Available' },
+  { id: 'm17', name: 'Saridon', genericName: 'Paracetamol + Propyphenazone + Caffeine', category: 'Analgesic', manufacturer: 'Bayer', quantity: 120, price: 25, expiryDate: '2027-11-30', prescriptionRequired: false, location: 'Shelf A5', status: 'Available' },
+  { id: 'm18', name: 'Famotidine 20mg', genericName: 'Famotidine', category: 'Antacid', manufacturer: 'Sun Pharma', quantity: 160, price: 16, expiryDate: '2027-10-31', prescriptionRequired: false, location: 'Shelf D3', status: 'Available' },
+  { id: 'm19', name: 'Antacid Suspension 200ml', genericName: 'Aluminium Hydroxide + Magnesium Hydroxide', category: 'Antacid', manufacturer: 'Abbott', quantity: 90, price: 85, expiryDate: '2027-08-31', prescriptionRequired: false, location: 'Shelf D4', status: 'Available' },
+  { id: 'm20', name: 'ORS Sachets', genericName: 'Oral Rehydration Salts', category: 'Rehydration', manufacturer: 'Cipla', quantity: 240, price: 8, expiryDate: '2027-09-30', prescriptionRequired: false, location: 'Shelf G3', status: 'Available' },
+  { id: 'm21', name: 'Vitamin C 500mg', genericName: 'Ascorbic Acid', category: 'Vitamin', manufacturer: 'Mankind', quantity: 180, price: 12, expiryDate: '2028-01-31', prescriptionRequired: false, location: 'Shelf G4', status: 'Available' },
+  { id: 'm22', name: 'Clotrimazole 1% Cream 15g', genericName: 'Clotrimazole', category: 'Antifungal', manufacturer: 'Cipla', quantity: 75, price: 48, expiryDate: '2027-07-31', prescriptionRequired: false, location: 'Shelf J1', status: 'Available' },
+  { id: 'm23', name: 'Diclofenac Gel 30g', genericName: 'Diclofenac Diethylamine', category: 'Topical Pain Relief', manufacturer: 'Novartis', quantity: 65, price: 95, expiryDate: '2027-06-30', prescriptionRequired: false, location: 'Shelf J2', status: 'Available' },
+  { id: 'm24', name: 'Mupirocin 2% Ointment 5g', genericName: 'Mupirocin', category: 'Topical Antibiotic', manufacturer: 'Glenmark', quantity: 40, price: 75, expiryDate: '2027-05-31', prescriptionRequired: true, location: 'Shelf J3', status: 'Available' },
 ];
 
 const statusConfig: Record<MedStatus, string> = {
   'Available': 'bg-success/10 text-success border border-success/20',
   'Low Stock': 'bg-warning/10 text-warning border border-warning/20',
   'Out of Stock': 'bg-danger/10 text-danger border border-danger/20',
+  'Expired': 'bg-danger/10 text-danger border border-danger/20',
 };
 
-const getStatus = (qty: number): MedStatus => qty === 0 ? 'Out of Stock' : qty <= 5 ? 'Low Stock' : 'Available';
+const getStatus = (qty: number, expiryDate: string): MedStatus => {
+  if (expiryDate && expiryDate < new Date().toISOString().slice(0, 10)) return 'Expired';
+  return qty === 0 ? 'Out of Stock' : qty <= 5 ? 'Low Stock' : 'Available';
+};
 
 export default function MedicinesSection() {
   const purchaseOrders = useSubmittedPurchaseOrders('Medicine');
-  const [medicines, setMedicines] = useState<Medicine[]>(initialMedicines);
+  const [medicines, setMedicines] = usePersistentInventory<Medicine>('medicine', initialMedicines);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<'All' | MedStatus>('All');
@@ -70,7 +82,7 @@ export default function MedicinesSection() {
   const filtered = useMemo(() => {
     let list = medicines.filter(m => {
       const q = search.toLowerCase();
-      const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genericName.toLowerCase().includes(q) || m.manufacturer.toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
+      const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genericName.toLowerCase().includes(q) || m.manufacturer.toLowerCase().includes(q) || (m.supplier || '').toLowerCase().includes(q) || (m.batchNumber || '').toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
       const matchCat = catFilter === 'All' || m.category === catFilter;
       const matchStatus = statusFilter === 'All' || m.status === statusFilter;
       return matchSearch && matchCat && matchStatus;
@@ -88,7 +100,7 @@ export default function MedicinesSection() {
   };
 
   const handleSave = (med: Medicine) => {
-    const updated = { ...med, status: getStatus(med.quantity) };
+    const updated = { ...med, status: getStatus(med.quantity, med.expiryDate) };
     recordAdminActivity({
       category: 'medicine',
       tone: updated.status === 'Out of Stock' ? 'danger' : 'success',
@@ -114,6 +126,18 @@ export default function MedicinesSection() {
     showToast('Medicine deleted');
   };
 
+  const adjustStock = (medicine: Medicine, delta: number) => {
+    if (medicine.quantity + delta < 0) return;
+    const updated = { ...medicine, quantity: medicine.quantity + delta };
+    updated.status = getStatus(updated.quantity, updated.expiryDate);
+    setMedicines(previous => previous.map(item => item.id === medicine.id ? updated : item));
+    recordAdminActivity({
+      category: 'medicine',
+      tone: delta < 0 ? 'warning' : 'info',
+      message: `Stock adjusted for ${medicine.name}: ${medicine.quantity} → ${updated.quantity} (batch ${medicine.batchNumber || 'not recorded'}).`,
+    });
+  };
+
   const exportToExcel = async () => {
     try {
       const XLSX = await import('xlsx');
@@ -121,7 +145,7 @@ export default function MedicinesSection() {
         'Name': m.name, 'Generic Name': m.genericName, 'Category': m.category,
         'Manufacturer': m.manufacturer, 'Quantity': m.quantity, 'Price (₹)': m.price,
         'Expiry Date': m.expiryDate, 'Prescription Required': m.prescriptionRequired ? 'Yes' : 'No',
-        'Location': m.location, 'Status': m.status,
+          'Batch Number': m.batchNumber || '', 'Supplier': m.supplier || '', 'Location': m.location, 'Status': getStatus(m.quantity, m.expiryDate),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       ws['!cols'] = [{ wch: 25 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 15 }, { wch: 14 }];
@@ -147,7 +171,7 @@ export default function MedicinesSection() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Medicines</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{medicines.length} total · {medicines.filter(m => m.status === 'Low Stock').length} low stock · {medicines.filter(m => m.status === 'Out of Stock').length} out of stock</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{medicines.length} total · {medicines.filter(m => m.status === 'Low Stock').length} low stock · {medicines.filter(m => m.status === 'Out of Stock').length} out of stock · {medicines.filter(m => m.expiryDate && m.expiryDate >= new Date().toISOString().slice(0, 10) && m.expiryDate <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).length} expiring within 30 days</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted transition-colors">
@@ -186,7 +210,9 @@ export default function MedicinesSection() {
                   { label: 'Manufacturer', field: 'manufacturer' as keyof Medicine },
                   { label: 'Qty', field: 'quantity' as keyof Medicine },
                   { label: 'Price', field: 'price' as keyof Medicine },
+                  { label: 'Batch', field: 'batchNumber' as keyof Medicine },
                   { label: 'Expiry', field: 'expiryDate' as keyof Medicine },
+                  { label: 'Supplier', field: 'supplier' as keyof Medicine },
                   { label: 'Rx', field: 'prescriptionRequired' as keyof Medicine },
                   { label: 'Status', field: 'status' as keyof Medicine },
                 ].map(col => (
@@ -199,7 +225,7 @@ export default function MedicinesSection() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 && purchaseOrders.length === 0 ? (
-                <tr><td colSpan={10} className="table-cell text-center text-muted-foreground py-16">
+                <tr><td colSpan={12} className="table-cell text-center text-muted-foreground py-16">
                   <div className="flex flex-col items-center gap-2"><Search size={32} className="text-muted-foreground/30" /><p>No medicines found</p></div>
                 </td></tr>
               ) : filtered.map(m => (
@@ -210,11 +236,20 @@ export default function MedicinesSection() {
                   <td className="table-cell text-sm text-muted-foreground">{m.manufacturer}</td>
                   <td className="table-cell tabular-nums font-semibold">{m.quantity}</td>
                   <td className="table-cell tabular-nums">₹{m.price}</td>
+                  <td className="table-cell text-xs text-muted-foreground">{m.batchNumber || '—'}</td>
                   <td className="table-cell text-xs text-muted-foreground whitespace-nowrap">{m.expiryDate}</td>
+                  <td className="table-cell text-xs text-muted-foreground">{m.supplier || '—'}</td>
                   <td className="table-cell text-center">{m.prescriptionRequired ? <span className="text-warning text-xs font-bold">Rx</span> : <span className="text-muted-foreground text-xs">OTC</span>}</td>
-                  <td className="table-cell"><span className={`badge-base text-xs ${statusConfig[m.status]}`}>{m.status}</span></td>
+                  <td className="table-cell">
+                    {(() => {
+                      const currentStatus = getStatus(m.quantity, m.expiryDate);
+                      return <span className={`badge-base text-xs ${statusConfig[currentStatus]}`}>{currentStatus}</span>;
+                    })()}
+                  </td>
                   <td className="table-cell">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => adjustStock(m, -1)} className="btn-icon text-muted-foreground hover:text-warning" title="Reduce stock by one"><Minus size={15} /></button>
+                      <button onClick={() => adjustStock(m, 1)} className="btn-icon text-muted-foreground hover:text-success" title="Increase stock by one"><Plus size={15} /></button>
                       <button onClick={() => setModal({ mode: 'view', med: m })} className="btn-icon text-muted-foreground hover:text-primary" title="View"><Eye size={15} /></button>
                       <button onClick={() => setModal({ mode: 'edit', med: m })} className="btn-icon text-muted-foreground hover:text-warning" title="Edit"><Edit2 size={15} /></button>
                       <button onClick={() => setDeleteConfirm(m.id)} className="btn-icon text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={15} /></button>
@@ -223,22 +258,24 @@ export default function MedicinesSection() {
                 </tr>
               ))}
               {purchaseOrders.map(order => (
-                <tr key={order.id} className="bg-primary/5 border-t-2 border-primary/20">
+                <tr key={order.id} className="bg-primary/5 border-t-2 border-primary/20 group">
                   <td className="table-cell font-semibold text-foreground whitespace-nowrap">{order.item}</td>
                   <td className="table-cell text-muted-foreground text-sm">Staff purchase order</td>
                   <td className="table-cell"><span className="badge-base bg-secondary text-primary border border-primary/20 text-xs">Order</span></td>
-                  <td className="table-cell text-sm text-muted-foreground">{order.hospital}</td>
+                  <td className="table-cell text-sm text-muted-foreground">—</td>
                   <td className="table-cell tabular-nums font-semibold">{order.quantity}</td>
                   <td className="table-cell">—</td>
-                  <td className="table-cell text-xs text-muted-foreground whitespace-nowrap">{order.date}</td>
+                  <td className="table-cell text-xs text-muted-foreground">{order.batchNumber || '—'}</td>
+                  <td className="table-cell text-xs text-muted-foreground whitespace-nowrap">{order.expiryDate || '—'}</td>
+                  <td className="table-cell text-sm text-muted-foreground">{order.hospital}</td>
                   <td className="table-cell text-center text-muted-foreground">—</td>
                   <td className="table-cell">
                     <div className="space-y-1">
-                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.status}</span>
+                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.purchaseStatus || 'Pending Approval'}</span>
                       <span className={`badge-base text-xs ${order.availability === 'Out of Stock' ? 'bg-danger/10 text-danger border border-danger/20' : 'bg-success/10 text-success border border-success/20'}`}>{order.availability ?? 'Available'}</span>
                     </div>
                   </td>
-                  <td className="table-cell text-xs text-muted-foreground">Purchase order</td>
+                  <td className="table-cell"><PurchaseOrderActions order={order} /></td>
                 </tr>
               ))}
             </tbody>
@@ -287,6 +324,8 @@ function MedicineModal({ med, mode, onClose, onSave }: { med: Medicine | null; m
             { label: 'Medicine Name *', field: 'name', type: 'text' },
             { label: 'Generic Name', field: 'genericName', type: 'text' },
             { label: 'Manufacturer', field: 'manufacturer', type: 'text' },
+            { label: 'Supplier', field: 'supplier', type: 'text' },
+            { label: 'Batch Number', field: 'batchNumber', type: 'text' },
             { label: 'Quantity', field: 'quantity', type: 'number' },
             { label: 'Price (₹)', field: 'price', type: 'number' },
             { label: 'Expiry Date', field: 'expiryDate', type: 'date' },

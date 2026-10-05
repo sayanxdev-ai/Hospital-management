@@ -1,8 +1,13 @@
 'use client';
-import React from 'react';
-import Link from 'next/link';
+import React, { useState } from 'react';
 import { Search, ArrowRight, ShieldCheck, Clock, Heart } from 'lucide-react';
 import { isSignedIn } from '@/lib/auth';
+
+const searchDestinations = {
+  medicine: { label: 'Medicine', placeholder: 'Medicine name...', href: '/#medicines' },
+  blood: { label: 'Blood', placeholder: 'Blood type...', href: '/#blood-bank' },
+  supplies: { label: 'Service', placeholder: 'Service name...', href: '/#supplies' },
+} as const;
 
 const trustBadges = [
   { icon: ShieldCheck, label: 'Verified Inventory' },
@@ -11,6 +16,17 @@ const trustBadges = [
 ];
 
 export default function HomeHero() {
+  const [searchType, setSearchType] = useState<keyof typeof searchDestinations | ''>('');
+
+  const handleSearch = () => {
+    if (!searchType) return;
+    if (!isSignedIn()) {
+      window.location.href = '/sign-up-login-screen';
+      return;
+    }
+    window.location.href = searchDestinations[searchType].href;
+  };
+
   return (
     <section className="relative gradient-hero min-h-[88vh] flex items-center overflow-hidden">
       {/* Background decoration */}
@@ -45,28 +61,35 @@ export default function HomeHero() {
             </p>
 
             {/* Quick search bar */}
-            <div className="flex gap-3 mb-8 max-w-lg">
+            <div className="flex flex-col sm:flex-row gap-3 mb-8 max-w-lg">
+              <select
+                value={searchType}
+                onChange={(event) => setSearchType(event.target.value as keyof typeof searchDestinations | '')}
+                aria-label="Choose what to search"
+                className="w-full sm:w-44 px-3 py-3.5 rounded-xl border-0 bg-white text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent shadow-card-md"
+              >
+                <option value="" disabled>Select type...</option>
+                {Object.entries(searchDestinations).map(([value, destination]) => (
+                  <option key={value} value={value}>{destination.label}</option>
+                ))}
+              </select>
               <div className="flex-1 relative">
                 <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search medicine, blood group..."
+                  placeholder={searchType ? searchDestinations[searchType].placeholder : 'Choose a type to start searching...'}
                   className="w-full pl-10 pr-4 py-3.5 rounded-xl border-0 bg-white text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent shadow-card-md"
                   readOnly
                 />
               </div>
-              <Link
-                href="/#medicines"
-                onClick={(event) => {
-                  if (!isSignedIn()) {
-                    event.preventDefault();
-                    window.location.href = '/sign-up-login-screen';
-                  }
-                }}
-                className="btn-primary px-5 py-3.5 rounded-xl"
+              <button
+                type="button"
+                onClick={handleSearch}
+                disabled={!searchType}
+                className="btn-primary px-5 py-3.5 rounded-xl disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Search
-              </Link>
+              </button>
             </div>
 
             {/* Trust badges */}

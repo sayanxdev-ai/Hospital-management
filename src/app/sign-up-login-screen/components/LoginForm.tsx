@@ -19,13 +19,6 @@ type DemoCredential = {
   badgeColor: string;
 };
 
-type RegisteredAccount = {
-  email: string;
-  password: string;
-  role: 'user' | 'staff';
-  name?: string;
-};
-
 const demoCredentials: DemoCredential[] = [
   { role: 'Admin', email: 'admin@mediconnect.in', password: 'Admin@2026', badge: 'Full Access', badgeColor: 'bg-primary/10 text-primary' },
   { role: 'Staff', email: 'staff@mediconnect.in', password: 'Staff@2026', badge: 'Clinical', badgeColor: 'bg-accent/10 text-accent' },
@@ -59,30 +52,36 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     setError('');
   };
 
-  const onSubmit = (data: LoginFormData) => {
+  const onSubmit = async (data: LoginFormData) => {
     setLoading(true);
     setError('');
-    // BACKEND INTEGRATION POINT: POST /api/auth/login with { email, password }
-    setTimeout(() => {
-      const registeredAccounts: RegisteredAccount[] = JSON.parse(localStorage.getItem('mediconnect-accounts') || '[]');
-      const demoMatch = demoCredentials.find(c => c.email === data.email && c.password === data.password);
-      const registeredMatch = registeredAccounts.find(c => c.email === data.email && c.password === data.password);
-      const match = demoMatch || registeredMatch;
-      if (match) {
-        const role = match.role;
-        const name = 'name' in match && match.name
-          ? match.name
-          : role;
-        setStoredSession({ email: data.email, role, name });
-        setSuccess(`Signed in as ${role}. Redirecting...`);
-        setTimeout(() => {
-          window.location.href = '/admin-dashboard';
-        }, 800);
-      } else {
-        setError('Invalid credentials — use the demo accounts below to sign in');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email.trim(), password: data.password }),
+      });
+      const result = await response.json() as {
+        account?: { email: string; role: string; name: string };
+        error?: string;
+      };
+
+      if (!response.ok || !result.account) {
+        throw new Error(result.error || 'Could not verify login details.');
       }
+
+      const { email, role, name } = result.account;
+      setStoredSession({ email, role, name });
+      setSuccess(`Signed in as ${role}. Redirecting...`);
+      setTimeout(() => {
+        window.location.href = '/admin-dashboard';
+      }, 800);
+    } catch (loginError) {
+      console.error('Could not verify login in local auth store.', loginError);
+      setError(loginError instanceof Error ? loginError.message : 'Could not verify login details.');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (

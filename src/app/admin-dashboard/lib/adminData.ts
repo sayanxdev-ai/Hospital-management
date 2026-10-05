@@ -2,11 +2,16 @@ export type RequestStatus = 'Pending' | 'Processing' | 'Available' | 'Completed'
 export type RequestPriority = 'Normal' | 'Urgent' | 'Emergency';
 export type RequestType = 'Medicine' | 'Blood' | 'Supplies';
 export type StockAvailability = 'Available' | 'Out of Stock';
+export type PurchaseOrderStatus = 'Draft' | 'Pending Approval' | 'Ordered' | 'Received';
 
 export interface AdminRequest {
   id: string;
   type: RequestType;
   source?: 'staff-purchase';
+  purchaseStatus?: PurchaseOrderStatus;
+  batchNumber?: string;
+  expiryDate?: string;
+  requesterEmail?: string;
   availability?: StockAvailability;
   patientName: string;
   item: string;

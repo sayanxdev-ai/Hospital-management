@@ -111,6 +111,10 @@ export default function AuthPage() {
             <RegisterForm onSwitchToLogin={() => setTab('login')} />
           )}
 
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Demo accounts are available for sign-in, and custom registrations are kept in the local app session.
+          </p>
+
           <div className="mt-6 text-center">
             <Link href="/" className="text-xs text-muted-foreground hover:text-primary transition-colors">
               ← Back to MediConnect Home

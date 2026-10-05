@@ -1,8 +1,10 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Search, Check, X, Eye, Download } from 'lucide-react';
-import { ADMIN_DATA_CHANGED, getAdminRequests, INITIAL_ADMIN_REQUESTS, saveAdminRequests, type AdminRequest, type RequestPriority, type RequestStatus, type RequestType } from '../lib/adminData';
+import { ADMIN_DATA_CHANGED, getAdminRequests, INITIAL_ADMIN_REQUESTS, saveAdminRequests, type AdminRequest, type PurchaseOrderStatus, type RequestPriority, type RequestStatus, type RequestType } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
+import { receivePurchaseOrderStock } from '../lib/inventoryStorage';
+import PurchaseOrderActions from './PurchaseOrderActions';
 
 type Request = AdminRequest;
 
@@ -45,7 +47,7 @@ export default function RequestsSection() {
 
   const filtered = useMemo(() => requests.filter(r => {
     const q = search.toLowerCase();
-    const matchSearch = !q || r.patientName.toLowerCase().includes(q) || r.item.toLowerCase().includes(q) || r.hospital.toLowerCase().includes(q);
+    const matchSearch = !q || r.id.toLowerCase().includes(q) || r.patientName.toLowerCase().includes(q) || r.item.toLowerCase().includes(q) || r.hospital.toLowerCase().includes(q);
     const matchType = typeFilter === 'All' || r.type === typeFilter;
     const matchStatus = statusFilter === 'All' || r.status === statusFilter;
     const matchPriority = priorityFilter === 'All' || r.priority === priorityFilter;
@@ -65,6 +67,54 @@ export default function RequestsSection() {
       });
     }
     showToast(`Status updated to ${status}`);
+  };
+
+  const updatePurchaseStatus = (order: AdminRequest, purchaseStatus: PurchaseOrderStatus) => {
+    const currentStatus = order.purchaseStatus || 'Pending Approval';
+    const nextStatuses: Record<PurchaseOrderStatus, PurchaseOrderStatus | null> = {
+      Draft: 'Pending Approval',
+      'Pending Approval': 'Ordered',
+      Ordered: 'Received',
+      Received: null,
+    };
+    if (nextStatuses[currentStatus] !== purchaseStatus) {
+      showToast(`Purchase orders must move from ${currentStatus} to ${nextStatuses[currentStatus] || 'no further status'}.`, 'danger');
+      return;
+    }
+    if (purchaseStatus === 'Received') {
+      try {
+        const quantity = Number.parseInt(order.quantity, 10);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          showToast('Cannot receive order: quantity is invalid.', 'danger');
+          return;
+        }
+        receivePurchaseOrderStock({
+          id: order.id,
+          type: order.type === 'Medicine' ? 'medicine' : order.type === 'Blood' ? 'blood' : 'supplies',
+          item: order.item,
+          quantity,
+          vendor: order.hospital,
+          batchNumber: order.batchNumber || '',
+          expiryDate: order.expiryDate || '',
+          receivedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('Could not receive purchase order.', error);
+        showToast('Could not receive order; inventory was not updated.', 'danger');
+        return;
+      }
+    }
+    const updatedRequests = requests.map(request => request.id === order.id
+      ? { ...request, purchaseStatus, status: purchaseStatus === 'Received' ? 'Completed' as RequestStatus : request.status }
+      : request);
+    setRequests(updatedRequests);
+    saveAdminRequests(updatedRequests);
+    recordAdminActivity({
+      category: 'order',
+      tone: purchaseStatus === 'Received' ? 'success' : 'info',
+      message: `Purchase order ${order.id} for ${order.item} moved to ${purchaseStatus}${purchaseStatus === 'Received' ? `; ${order.quantity} added to inventory.` : '.'}`,
+    });
+    showToast(`Purchase order marked ${purchaseStatus}`);
   };
 
   const exportToExcel = async () => {
@@ -178,14 +228,28 @@ export default function RequestsSection() {
                   <td className="table-cell text-muted-foreground whitespace-nowrap max-w-[120px] truncate">{req.hospital}</td>
                   <td className="table-cell"><span className={`badge-base ${priorityConfig[req.priority]}`}>{req.priority}</span></td>
                   <td className="table-cell">
+                    {req.source === 'staff-purchase' ? (
+                      <select
+                        value={req.purchaseStatus || 'Pending Approval'}
+                        onChange={e => updatePurchaseStatus(req, e.target.value as PurchaseOrderStatus)}
+                        disabled={req.purchaseStatus === 'Received'}
+                        className={`text-xs font-semibold px-2 py-1 rounded-full border cursor-pointer appearance-none ${req.purchaseStatus === 'Received' ? statusConfig.Completed.className : req.purchaseStatus === 'Ordered' ? statusConfig.Processing.className : statusConfig.Pending.className} bg-transparent`}
+                      >
+                        {(['Draft', 'Pending Approval', 'Ordered', 'Received'] as PurchaseOrderStatus[]).map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    ) : (
                     <select value={req.status} onChange={e => updateStatus(req.id, e.target.value as RequestStatus)}
                       className={`text-xs font-semibold px-2 py-1 rounded-full border cursor-pointer appearance-none ${statusConfig[req.status].className} bg-transparent`}>
                       {(Object.keys(statusConfig) as RequestStatus[]).map(s => <option key={s}>{s}</option>)}
                     </select>
+                    )}
                   </td>
                   <td className="table-cell text-muted-foreground whitespace-nowrap">{req.date}</td>
                   <td className="table-cell">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {req.source === 'staff-purchase' && <PurchaseOrderActions order={req} />}
                       <button onClick={() => setViewModal(req)} className="btn-icon text-muted-foreground hover:text-primary" title="View"><Eye size={15} /></button>
                       {req.status === 'Pending' && (
                         <>

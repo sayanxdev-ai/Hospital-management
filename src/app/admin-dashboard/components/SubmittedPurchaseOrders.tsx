@@ -10,7 +10,8 @@ export default function useSubmittedPurchaseOrders(type: RequestType): AdminRequ
     const refreshOrders = () => {
       setOrders(getAdminRequests().filter(request =>
         request.type === type &&
-        (request.source === 'staff-purchase' || request.patientName === 'Staff Purchase')
+        (request.source === 'staff-purchase' || request.patientName === 'Staff Purchase') &&
+        request.purchaseStatus !== 'Received'
       ));
     };
 

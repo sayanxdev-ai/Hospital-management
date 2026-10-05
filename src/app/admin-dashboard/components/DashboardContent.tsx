@@ -5,8 +5,9 @@ import DashboardCharts from './DashboardCharts';
 import RecentRequestsTable from './RecentRequestsTable';
 import AlertsPanel, { type QuickPurchaseTarget } from './AlertsPanel';
 import ActivityFeed from './ActivityFeed';
-import { addAdminRequest, type StockAvailability } from '../lib/adminData';
+import { addAdminRequest } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
+import { getStoredSession } from '@/lib/auth';
 
 const orderItems: Record<QuickPurchaseTarget['type'], string[]> = {
   medicine: [
@@ -14,6 +15,9 @@ const orderItems: Record<QuickPurchaseTarget['type'], string[]> = {
     'Amoxicillin 500mg', 'Pantoprazole 40mg', 'Omeprazole 20mg', 'Metformin 500mg',
     'Amlodipine 5mg', 'Aspirin 75mg', 'Insulin Glargine', 'Salbutamol Inhaler',
     'Vitamin D3 60000IU', 'Vitamin B12 500mcg', 'Ondansetron 4mg',
+    'Dolo 650mg', 'Saridon', 'Famotidine 20mg', 'Antacid Suspension 200ml',
+    'ORS Sachets', 'Vitamin C 500mg', 'Clotrimazole 1% Cream 15g',
+    'Diclofenac Gel 30g', 'Mupirocin 2% Ointment 5g',
   ],
   blood: ['A+ Blood', 'A− Blood', 'B+ Blood', 'B− Blood', 'AB+ Blood', 'AB− Blood', 'O+ Blood', 'O− Blood'],
   supplies: [
@@ -21,13 +25,17 @@ const orderItems: Record<QuickPurchaseTarget['type'], string[]> = {
     '5ml Syringes', 'IV Sets', 'Cotton Rolls 500g', 'Gauze Bandages 4"',
     'Digital Thermometers', 'Oxygen Masks (Adult)', 'PPE Kits', 'Alcohol Swabs (100pk)',
     'IV Cannula 20G', 'Urine Bags 2L', 'Kidney Trays (SS)',
+    'Surgical Scissors (Straight)', 'Surgical Scissors (Curved)',
+    'Sterilization Pouches (100pk)', 'Autoclave Indicator Tape',
+    'Sterile Dressing Packs', 'Crepe Bandages 10cm', 'Medical Adhesive Tape 2.5cm',
+    '2ml Syringes', '10ml Syringes', 'Disposable Surgical Gowns', 'Face Shields',
   ],
 };
 
 const orderVendors: Record<QuickPurchaseTarget['type'], string[]> = {
   medicine: ['MediConnect Supplier Hub', 'Cipla', 'Sun Pharma', 'Dr. Reddy\'s', 'Alkem', 'Zydus', 'USV', 'Bayer', 'Sanofi', 'GSK', 'Mankind', 'Abbott'],
   blood: ['City Blood Centre', 'Red Cross Mumbai', 'Apollo Blood Bank', 'Lifeline Blood Bank', 'Sanjivani Blood Centre', 'National Blood Bank', 'Red Cross Delhi', 'Fortis Blood Bank', 'Care Blood Centre'],
-  supplies: ['Medical Supply Store', 'MediConnect Supplier Hub'],
+  supplies: ['Medical Supply Store', 'MediConnect Supplier Hub', 'Apollo Medicals', 'MedPlus Mart', 'Surgical Stores India', 'Romsons', 'HMD Healthcare', 'BPL Medical Technologies'],
 };
 
 async function exportDashboardReport() {
@@ -57,14 +65,18 @@ async function exportDashboardReport() {
 export default function DashboardContent() {
   const purchaseRef = useRef<HTMLDivElement | null>(null);
   const [purchase, setPurchase] = useState<QuickPurchaseTarget | null>(null);
-  const [orderQty, setOrderQty] = useState<number>(50);
-  const [orderAvailability, setOrderAvailability] = useState<StockAvailability>('Available');
+  const [orderQty, setOrderQty] = useState<number | ''>('');
+  const [orderAvailability, setOrderAvailability] = useState('');
+  const [batchNumber, setBatchNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
   const [purchaseMessage, setPurchaseMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const handleQuickAction = (target: QuickPurchaseTarget) => {
-    setPurchase(target);
-    setOrderQty(target.quantity);
-    setOrderAvailability(target.availability ?? 'Available');
+    setPurchase({ ...target, title: '', vendor: '' });
+    setOrderQty('');
+    setOrderAvailability('');
+    setBatchNumber('');
+    setExpiryDate('');
     setPurchaseMessage(null);
     setTimeout(() => purchaseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
@@ -72,6 +84,20 @@ export default function DashboardContent() {
   const handleSubmitPurchase = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!purchase) return;
+
+    if (
+      !purchase.title ||
+      !purchase.vendor ||
+      (orderAvailability !== 'Available' && orderAvailability !== 'Out of Stock') ||
+      orderQty === ''
+    ) {
+      setPurchaseMessage({ text: 'Please enter an item, quantity, valid availability, and vendor.', type: 'error' });
+      return;
+    }
+    if (purchase.type !== 'blood' && expiryDate && expiryDate < new Date().toISOString().slice(0, 10)) {
+      setPurchaseMessage({ text: 'Expiry date cannot be in the past.', type: 'error' });
+      return;
+    }
 
     const minimum = purchase.type === 'medicine' ? 50 : 10;
     if (orderQty < minimum) {
@@ -84,10 +110,17 @@ export default function DashboardContent() {
     }
 
     const itemType = purchase.type === 'medicine' ? 'Medicine' : purchase.type === 'blood' ? 'Blood' : 'Supplies';
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const purchaseStatus = submitter?.value === 'Draft' ? 'Draft' : 'Pending Approval';
+    const session = getStoredSession();
     addAdminRequest({
       id: `purchase-${Date.now()}`,
       type: itemType,
       source: 'staff-purchase',
+      purchaseStatus,
+      batchNumber,
+      expiryDate,
+      requesterEmail: session?.email,
       availability: orderAvailability,
       patientName: 'Staff Purchase',
       item: purchase.title,
@@ -102,9 +135,9 @@ export default function DashboardContent() {
     recordAdminActivity({
       category: 'order',
       tone: orderAvailability === 'Out of Stock' ? 'danger' : 'success',
-      message: `${itemType} order submitted: ${orderQty} ${purchase.type === 'blood' ? 'bags' : 'units'} of ${purchase.title} from ${purchase.vendor} (${orderAvailability}).`,
+      message: `${itemType} purchase order ${purchaseStatus.toLowerCase()}: ${orderQty} ${purchase.type === 'blood' ? 'bags' : 'units'} of ${purchase.title} from ${purchase.vendor} (${orderAvailability}).`,
     });
-    setPurchaseMessage({ text: `${itemType} purchase request sent to ${purchase.vendor}.`, type: 'success' });
+    setPurchaseMessage({ text: `${itemType} purchase order saved as ${purchaseStatus}.`, type: 'success' });
   };
 
   const itemOptions = purchase
@@ -129,7 +162,7 @@ export default function DashboardContent() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => { setPurchase({ type: 'medicine', title: 'Paracetamol 500mg', quantity: 50, vendor: 'MediConnect Supplier Hub', urgent: false }); setOrderQty(50); setOrderAvailability('Available'); }}
+              onClick={() => handleQuickAction({ type: 'medicine', title: 'Paracetamol 500mg', quantity: 50, vendor: 'MediConnect Supplier Hub', urgent: false })}
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               <Package size={16} className="text-primary" />
@@ -137,7 +170,7 @@ export default function DashboardContent() {
             </button>
             <button
               type="button"
-              onClick={() => { setPurchase({ type: 'blood', title: 'A+ Blood', quantity: 10, vendor: 'City Blood Centre', urgent: true }); setOrderQty(10); setOrderAvailability('Available'); }}
+              onClick={() => handleQuickAction({ type: 'blood', title: 'A+ Blood', quantity: 10, vendor: 'City Blood Centre', urgent: true })}
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               <Droplets size={16} className="text-danger" />
@@ -145,7 +178,7 @@ export default function DashboardContent() {
             </button>
             <button
               type="button"
-              onClick={() => { setPurchase({ type: 'supplies', title: 'Surgical Gloves (M)', quantity: 10, vendor: 'Medical Supply Store' }); setOrderQty(10); setOrderAvailability('Available'); }}
+              onClick={() => handleQuickAction({ type: 'supplies', title: 'Surgical Gloves (M)', quantity: 10, vendor: 'Medical Supply Store' })}
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               <Package size={16} className="text-warning" />
@@ -162,16 +195,21 @@ export default function DashboardContent() {
         </div>
 
         {purchase && (
-          <form onSubmit={handleSubmitPurchase} className="mt-5 grid gap-4 rounded-xl border border-border bg-card p-4 lg:grid-cols-[1.1fr_0.9fr_0.9fr_0.8fr_auto] lg:items-end">
+          <form onSubmit={handleSubmitPurchase} className="mt-5 grid gap-4 rounded-xl border border-border bg-card p-4 lg:grid-cols-4 lg:items-end">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Item</label>
-              <select
+              <input
+                type="text"
                 value={purchase.title}
                 onChange={event => setPurchase(prev => prev ? { ...prev, title: event.target.value } : prev)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {itemOptions.map(item => <option key={item} value={item}>{item}</option>)}
-              </select>
+                list="purchase-item-options"
+                placeholder={purchase.type === 'medicine' ? 'Medicine name...' : purchase.type === 'blood' ? 'Blood type...' : 'Service name...'}
+                required
+                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <datalist id="purchase-item-options">
+                {itemOptions.filter(Boolean).map(item => <option key={item} value={item} />)}
+              </datalist>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Quantity</label>
@@ -179,35 +217,60 @@ export default function DashboardContent() {
                 type="number"
                 min={purchase.type === 'medicine' ? 50 : 10}
                 value={orderQty}
-                onChange={event => setOrderQty(Number(event.target.value) || 0)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={event => setOrderQty(event.target.value === '' ? '' : Number(event.target.value))}
+                placeholder="Quantity..."
+                required
+                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Stock availability</label>
-              <select
+              <input
+                type="text"
                 value={orderAvailability}
-                onChange={event => setOrderAvailability(event.target.value as StockAvailability)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="Available">Available</option>
-                <option value="Out of Stock">Out of Stock</option>
-              </select>
+                onChange={event => setOrderAvailability(event.target.value)}
+                list="purchase-availability-options"
+                placeholder="Stock availability..."
+                required
+                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <datalist id="purchase-availability-options">
+                <option value="Available" />
+                <option value="Out of Stock" />
+              </datalist>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Vendor</label>
-              <select
+              <input
+                type="text"
                 value={purchase.vendor}
                 onChange={event => setPurchase((prev: QuickPurchaseTarget | null) => prev ? { ...prev, vendor: event.target.value } : prev)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {vendorOptions.map(vendor => <option key={vendor} value={vendor}>{vendor}</option>)}
-              </select>
+                list="purchase-vendor-options"
+                placeholder="Vendor name..."
+                required
+                className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <datalist id="purchase-vendor-options">
+                {vendorOptions.filter(Boolean).map(vendor => <option key={vendor} value={vendor} />)}
+              </datalist>
             </div>
-            <button type="submit" className="btn-primary px-4 py-2.5 text-sm whitespace-nowrap">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Batch Number</label>
+              <input type="text" value={batchNumber} onChange={event => setBatchNumber(event.target.value)} placeholder="Batch number..." className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Expiry Date</label>
+              <input type="date" value={expiryDate} onChange={event => setExpiryDate(event.target.value)} min={new Date().toISOString().slice(0, 10)} className="w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" value="Draft" className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted whitespace-nowrap">
+                Save Draft
+              </button>
+              <button type="submit" value="Pending Approval" className="btn-primary px-4 py-2.5 text-sm whitespace-nowrap">
               Submit Order
               <ArrowRight size={14} />
-            </button>
+              </button>
+            </div>
           </form>
         )}
         {purchaseMessage && (

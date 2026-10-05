@@ -15,6 +15,7 @@ interface AdminTopbarProps {
 
 const sectionLabels: Record<string, string> = {
   dashboard: 'Dashboard',
+  'my-orders': 'My Requests & Orders',
   activity: 'Activity Log',
   medicines: 'Medicines',
   blood: 'Blood Bank',

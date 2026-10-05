@@ -3,6 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, Check, X, Download } from 'lucide-react';
 import { recordAdminActivity } from '../lib/activityStorage';
 import useSubmittedPurchaseOrders from './SubmittedPurchaseOrders';
+import { getInventoryReceipts, INVENTORY_CHANGED } from '../lib/inventoryStorage';
+import PurchaseOrderActions from './PurchaseOrderActions';
 
 type BloodStatus = 'Available' | 'Low Availability' | 'Unavailable';
 
@@ -45,6 +47,37 @@ export default function BloodBankSection() {
   const [modal, setModal] = useState<{ mode: 'edit' | 'add'; rec: BloodRecord | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const applyReceivedStock = () => {
+      const updated = [...initialBlood];
+      getInventoryReceipts().filter(receipt => receipt.type === 'blood').forEach(receipt => {
+        const bloodGroup = receipt.item.replace(/\s+blood$/i, '').trim();
+        const existing = updated.find(record =>
+          record.bloodGroup.toLowerCase() === bloodGroup.toLowerCase() &&
+          record.bloodBank.toLowerCase() === receipt.vendor.toLowerCase()
+        );
+        if (existing) {
+          existing.units += receipt.quantity;
+          existing.lastUpdated = receipt.receivedAt.slice(0, 10);
+        } else {
+          updated.push({
+            id: `received-${receipt.id}`,
+            bloodGroup,
+            units: receipt.quantity,
+            bloodBank: receipt.vendor,
+            location: 'Receiving',
+            contact: 'Not provided',
+            lastUpdated: receipt.receivedAt.slice(0, 10),
+          });
+        }
+      });
+      setRecords(updated);
+    };
+    applyReceivedStock();
+    window.addEventListener(INVENTORY_CHANGED, applyReceivedStock);
+    return () => window.removeEventListener(INVENTORY_CHANGED, applyReceivedStock);
+  }, []);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
@@ -183,12 +216,12 @@ export default function BloodBankSection() {
                   <td className="table-cell text-sm text-muted-foreground">Staff purchase order</td>
                   <td className="table-cell">
                     <div className="space-y-1">
-                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.status}</span>
+                      <span className="badge-base bg-warning/10 text-warning border border-warning/20 text-xs">Order: {order.purchaseStatus || 'Pending Approval'}</span>
                       <span className={`badge-base text-xs ${order.availability === 'Out of Stock' ? 'bg-danger/10 text-danger border border-danger/20' : 'bg-success/10 text-success border border-success/20'}`}>{order.availability ?? 'Available'}</span>
                     </div>
                   </td>
                   <td className="table-cell text-xs text-muted-foreground">{order.date}</td>
-                  <td className="table-cell text-xs text-muted-foreground">Purchase order</td>
+                  <td className="table-cell"><PurchaseOrderActions order={order} /></td>
                 </tr>
               ))}
             </tbody>

@@ -1,6 +1,9 @@
 'use client';
 import React, { useState } from 'react';
 import { Search, Pill, X } from 'lucide-react';
+import { addAdminRequest } from '@/app/admin-dashboard/lib/adminData';
+import { recordAdminActivity } from '@/app/admin-dashboard/lib/activityStorage';
+import { getStoredSession } from '@/lib/auth';
 
 const medicines = [
   { id: 'med-001', name: 'Paracetamol 500mg', generic: 'Acetaminophen', category: 'Analgesic', price: 12, qty: 450, location: 'Pharmacy A', rx: false, status: 'available' },
@@ -15,9 +18,18 @@ const medicines = [
   { id: 'med-010', name: 'Omeprazole 20mg', generic: 'Omeprazole', category: 'Antacid', price: 38, qty: 0, location: 'Pharmacy C', rx: false, status: 'out' },
   { id: 'med-011', name: 'ORS Sachet', generic: 'Oral Rehydration Salts', category: 'Supplement', price: 8, qty: 1200, location: 'Pharmacy A', rx: false, status: 'available' },
   { id: 'med-012', name: 'Aspirin 75mg', generic: 'Acetylsalicylic Acid', category: 'Analgesic', price: 22, qty: 480, location: 'Pharmacy B', rx: false, status: 'available' },
+  { id: 'med-013', name: 'Dolo 650mg', generic: 'Paracetamol', category: 'Analgesic', price: 18, qty: 300, location: 'Pharmacy A', rx: false, status: 'available' },
+  { id: 'med-014', name: 'Saridon', generic: 'Paracetamol + Propyphenazone + Caffeine', category: 'Analgesic', price: 25, qty: 120, location: 'Pharmacy B', rx: false, status: 'available' },
+  { id: 'med-015', name: 'Famotidine 20mg', generic: 'Famotidine', category: 'Antacid', price: 16, qty: 160, location: 'Pharmacy C', rx: false, status: 'available' },
+  { id: 'med-016', name: 'Antacid Suspension 200ml', generic: 'Aluminium Hydroxide + Magnesium Hydroxide', category: 'Antacid', price: 85, qty: 90, location: 'Pharmacy B', rx: false, status: 'available' },
+  { id: 'med-017', name: 'ORS Sachets', generic: 'Oral Rehydration Salts', category: 'Supplement', price: 8, qty: 240, location: 'Pharmacy A', rx: false, status: 'available' },
+  { id: 'med-018', name: 'Vitamin C 500mg', generic: 'Ascorbic Acid', category: 'Supplement', price: 12, qty: 180, location: 'Pharmacy C', rx: false, status: 'available' },
+  { id: 'med-019', name: 'Clotrimazole 1% Cream 15g', generic: 'Clotrimazole', category: 'Antifungal', price: 48, qty: 75, location: 'Pharmacy A', rx: false, status: 'available' },
+  { id: 'med-020', name: 'Diclofenac Gel 30g', generic: 'Diclofenac Diethylamine', category: 'Topical', price: 95, qty: 65, location: 'Pharmacy B', rx: false, status: 'available' },
+  { id: 'med-021', name: 'Mupirocin 2% Ointment 5g', generic: 'Mupirocin', category: 'Topical', price: 75, qty: 40, location: 'Pharmacy C', rx: true, status: 'available' },
 ];
 
-const categoryOptions = ['All Categories', 'Analgesic', 'Antibiotic', 'Antacid', 'Antidiabetic', 'Antihistamine', 'Antihypertensive', 'Supplement', 'Anti-inflammatory'];
+const categoryOptions = ['All Categories', 'Analgesic', 'Antibiotic', 'Antacid', 'Antidiabetic', 'Antihistamine', 'Antihypertensive', 'Supplement', 'Anti-inflammatory', 'Antifungal', 'Topical'];
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   available: { label: '🟢 Available', className: 'status-available' },
@@ -30,6 +42,31 @@ export default function QuickSearch() {
   const [category, setCategory] = useState('All Categories');
   const [availOnly, setAvailOnly] = useState(false);
   const [rxFilter, setRxFilter] = useState<'all' | 'yes' | 'no'>('all');
+  const [requestMessage, setRequestMessage] = useState('');
+
+  const requestMedicine = (medicine: (typeof medicines)[number]) => {
+    const session = getStoredSession();
+    if (!session) {
+      window.location.href = '/sign-up-login-screen';
+      return;
+    }
+    const id = `request-${Date.now()}`;
+    addAdminRequest({
+      id,
+      type: 'Medicine',
+      patientName: session.name || session.email.split('@')[0],
+      item: medicine.name,
+      quantity: '1 pack',
+      hospital: 'Public Medicine Request',
+      priority: 'Normal',
+      status: 'Pending',
+      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      contact: session.email,
+      requesterEmail: session.email,
+    });
+    recordAdminActivity({ category: 'request', tone: 'info', message: `Medicine request submitted for ${medicine.name} by ${session.name || session.email}.` });
+    setRequestMessage(`Request submitted for ${medicine.name}. Track it from My Purchase Orders in the sidebar.`);
+  };
 
   const filtered = medicines.filter((m) => {
     const matchQ = !query || m.name.toLowerCase().includes(query.toLowerCase()) || m.generic.toLowerCase().includes(query.toLowerCase());
@@ -42,6 +79,9 @@ export default function QuickSearch() {
   return (
     <section id="supplies" className="py-20 bg-background">
       <div className="max-w-screen-2xl mx-auto px-6 lg:px-10">
+        {requestMessage && (
+          <p role="status" className="mb-4 rounded-lg border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">{requestMessage}</p>
+        )}
         <div className="mb-10">
           <h2 className="text-3xl font-bold text-foreground mb-2">Medicine Search</h2>
           <p className="text-muted-foreground">Search our formulary of 248+ medicines by name, generic name, or category</p>
@@ -134,6 +174,7 @@ export default function QuickSearch() {
                     <th className="table-header-cell">Location</th>
                     <th className="table-header-cell">Rx</th>
                     <th className="table-header-cell">Status</th>
+                    <th className="table-header-cell">Request</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -158,6 +199,11 @@ export default function QuickSearch() {
                         </td>
                         <td className="table-cell">
                           <span className={`badge-base ${cfg.className}`}>{cfg.label}</span>
+                        </td>
+                        <td className="table-cell">
+                          <button type="button" onClick={() => requestMedicine(med)} className="text-xs font-semibold text-primary hover:underline">
+                            Request
+                          </button>
                         </td>
                       </tr>
                     );
