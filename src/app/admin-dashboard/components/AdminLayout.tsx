@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import AdminSidebar from './AdminSidebar';
 import AdminTopbar from './AdminTopbar';
 import { useRouter } from 'next/navigation';
-import { getStoredSession } from '@/lib/auth';
+import { getStoredSession, type AuthSession } from '@/lib/auth';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -15,6 +15,7 @@ export default function AdminLayout({ children, activeSection = 'dashboard' }: A
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const router = useRouter();
   const adminOnlySections = ['department-analytics', 'salaries', 'users', 'settings'];
   const requiresAdmin = adminOnlySections.includes(activeSection);
@@ -22,6 +23,7 @@ export default function AdminLayout({ children, activeSection = 'dashboard' }: A
   useEffect(() => {
     const session = getStoredSession();
     const hasAdminAccess = session?.role?.toLowerCase() === 'admin';
+    setSession(session);
     setIsAdmin(hasAdminAccess);
     setSessionChecked(true);
     if (!session) router.replace('/sign-up-login-screen');
@@ -49,6 +51,7 @@ export default function AdminLayout({ children, activeSection = 'dashboard' }: A
         onClose={() => setMobileSidebarOpen(false)}
         activeSection={activeSection}
         isAdmin={isAdmin}
+        session={session}
       />
 
       {/* Main content */}
@@ -61,6 +64,7 @@ export default function AdminLayout({ children, activeSection = 'dashboard' }: A
           onMobileMenuOpen={() => setMobileSidebarOpen(true)}
           sidebarCollapsed={sidebarCollapsed}
           activeSection={activeSection}
+          session={session}
         />
         <main className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-screen-2xl mx-auto px-4 lg:px-8 xl:px-10 2xl:px-16 py-6">

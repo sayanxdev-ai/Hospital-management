@@ -4,6 +4,7 @@ import Link from 'next/link';
 import AppLogo from '@/components/ui/AppLogo';
 import { LayoutDashboard, Pill, Droplets, Package, Users, FileText, ClipboardList, Settings, LogOut, X, ChevronRight, Activity, Stethoscope, ChartNoAxesCombined } from 'lucide-react';
 import { ADMIN_DATA_CHANGED, getAdminBadgeCounts, INITIAL_ADMIN_BADGE_COUNTS } from '../lib/adminData';
+import { getSessionDisplay, type AuthSession } from '@/lib/auth';
 
 const navGroups = [
   {
@@ -47,10 +48,12 @@ interface AdminSidebarProps {
   onClose: () => void;
   activeSection?: string;
   isAdmin?: boolean;
+  session: AuthSession | null;
 }
 
-export default function AdminSidebar({ collapsed, mobileOpen, onClose, activeSection = 'dashboard', isAdmin = false }: AdminSidebarProps) {
+export default function AdminSidebar({ collapsed, mobileOpen, onClose, activeSection = 'dashboard', isAdmin = false, session }: AdminSidebarProps) {
   const [badgeCounts, setBadgeCounts] = useState(INITIAL_ADMIN_BADGE_COUNTS);
+  const userDisplay = getSessionDisplay(session);
 
   useEffect(() => {
     const refreshBadgeCounts = () => setBadgeCounts(getAdminBadgeCounts());
@@ -154,17 +157,17 @@ export default function AdminSidebar({ collapsed, mobileOpen, onClose, activeSec
         {!collapsed ? (
           <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-muted cursor-pointer transition-colors mb-2">
             <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              AK
+              {userDisplay.initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">Sayan Karmakar</p>
-              <p className="text-xs text-muted-foreground">Administrator</p>
+              <p className="text-sm font-semibold text-foreground truncate">{userDisplay.name}</p>
+              <p className="text-xs text-muted-foreground">{userDisplay.roleLabel}</p>
             </div>
             <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
           </div>
         ) : (
           <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-white text-xs font-bold mx-auto mb-2">
-            AK
+            {userDisplay.initials}
           </div>
         )}
         <Link

@@ -13,7 +13,7 @@ type RegisterFormData = {
   terms: boolean;
 };
 
-type RegisteredAccount = Pick<RegisterFormData, 'email' | 'password' | 'role'>;
+type RegisteredAccount = Pick<RegisterFormData, 'name' | 'email' | 'password' | 'role'>;
 
 interface RegisterFormProps {
   onSwitchToLogin: () => void;
@@ -44,7 +44,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         return;
       }
 
-      accounts.push({ email: data.email, password: data.password, role: data.role });
+      accounts.push({ name: data.name, email: data.email, password: data.password, role: data.role });
       localStorage.setItem('mediconnect-accounts', JSON.stringify(accounts));
       setStoredSession({ email: data.email, role: data.role, name: data.name });
       setLoading(false);

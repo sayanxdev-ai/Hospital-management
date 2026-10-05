@@ -6,6 +6,24 @@ export type AuthSession = {
   name?: string;
 };
 
+export function getSessionDisplay(session: AuthSession | null) {
+  const name = session?.name?.trim() || session?.email.split('@')[0] || 'User';
+  const role = session?.role.toLowerCase();
+  const roleLabel = role === 'admin'
+    ? 'Administrator'
+    : role === 'staff'
+      ? 'Hospital Staff'
+      : role === 'user'
+        ? 'Patient / Public'
+        : session?.role || 'User';
+  const nameParts = name.split(/\s+/);
+  const initials = nameParts.length > 1
+    ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
+    : name.slice(0, 2);
+
+  return { name, roleLabel, initials: initials.toUpperCase() };
+}
+
 export function getStoredSession(): AuthSession | null {
   if (typeof window === 'undefined') return null;
 

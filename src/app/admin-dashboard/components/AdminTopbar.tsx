@@ -3,12 +3,14 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Menu, Bell, Search, RefreshCw, ChevronDown, X } from 'lucide-react';
 import { ADMIN_ACTIVITY_CHANGED, deleteAdminActivity, formatActivityTime, getAdminActivities, type AdminActivity } from '../lib/activityStorage';
+import { getSessionDisplay, type AuthSession } from '@/lib/auth';
 
 interface AdminTopbarProps {
   onToggleSidebar: () => void;
   onMobileMenuOpen: () => void;
   sidebarCollapsed: boolean;
   activeSection?: string;
+  session: AuthSession | null;
 }
 
 const sectionLabels: Record<string, string> = {
@@ -27,9 +29,10 @@ const sectionLabels: Record<string, string> = {
   settings: 'Settings',
 };
 
-export default function AdminTopbar({ onToggleSidebar, onMobileMenuOpen, sidebarCollapsed, activeSection = 'dashboard' }: AdminTopbarProps) {
+export default function AdminTopbar({ onToggleSidebar, onMobileMenuOpen, sidebarCollapsed, activeSection = 'dashboard', session }: AdminTopbarProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<AdminActivity[]>([]);
+  const userDisplay = getSessionDisplay(session);
 
   React.useEffect(() => {
     const refreshNotifications = () => setNotifications(getAdminActivities());
@@ -150,11 +153,11 @@ export default function AdminTopbar({ onToggleSidebar, onMobileMenuOpen, sidebar
       {/* User */}
       <div className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded-lg px-2 py-1.5 transition-colors">
         <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-white text-xs font-bold">
-          AK
+          {userDisplay.initials}
         </div>
         <div className="hidden md:block text-left">
-          <p className="text-sm font-semibold text-foreground leading-none">Sayan Karmakar</p>
-          <p className="text-xs text-muted-foreground">Admin</p>
+          <p className="text-sm font-semibold text-foreground leading-none">{userDisplay.name}</p>
+          <p className="text-xs text-muted-foreground">{userDisplay.roleLabel}</p>
         </div>
       </div>
     </header>

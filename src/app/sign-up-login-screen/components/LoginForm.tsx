@@ -23,6 +23,7 @@ type RegisteredAccount = {
   email: string;
   password: string;
   role: 'user' | 'staff';
+  name?: string;
 };
 
 const demoCredentials: DemoCredential[] = [
@@ -68,8 +69,11 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
       const registeredMatch = registeredAccounts.find(c => c.email === data.email && c.password === data.password);
       const match = demoMatch || registeredMatch;
       if (match) {
-        const role = 'role' in match ? match.role : 'User';
-        setStoredSession({ email: data.email, role, name: match.role === 'Admin' ? 'Admin' : role });
+        const role = match.role;
+        const name = 'name' in match && match.name
+          ? match.name
+          : role;
+        setStoredSession({ email: data.email, role, name });
         setSuccess(`Signed in as ${role}. Redirecting...`);
         setTimeout(() => {
           window.location.href = '/admin-dashboard';
