@@ -5,7 +5,18 @@ import { ADMIN_PATIENTS_CHANGED, PATIENTS_STORAGE_KEY } from '../lib/patientStor
 import { recordAdminActivity } from '../lib/activityStorage';
 import { DOCTORS, DOCTOR_SPECIALTIES } from '../lib/doctorsData';
 
-type PatientStatus = 'Admitted' | 'Under Treatment' | 'Emergency' | 'Discharged' | 'Transferred';
+type PatientStatus =
+  | 'Admitted'
+  | 'Awaiting Bed'
+  | 'Critical'
+  | 'Discharged'
+  | 'Emergency'
+  | 'In Surgery'
+  | 'Observation'
+  | 'Outpatient'
+  | 'Recovery'
+  | 'Transferred'
+  | 'Under Treatment';
 type Gender = 'Male' | 'Female' | 'Other';
 
 interface Patient {
@@ -50,6 +61,12 @@ const initialPatients: Patient[] = [
 
 const statusConfig: Record<PatientStatus, { className: string; color: string }> = {
   'Admitted': { className: 'bg-info/10 text-info border border-info/20', color: 'text-info' },
+  'Awaiting Bed': { className: 'bg-warning/10 text-warning border border-warning/20', color: 'text-warning' },
+  'Critical': { className: 'bg-danger/10 text-danger border border-danger/20', color: 'text-danger' },
+  'In Surgery': { className: 'bg-primary/10 text-primary border border-primary/20', color: 'text-primary' },
+  'Observation': { className: 'bg-accent/10 text-accent border border-accent/20', color: 'text-accent' },
+  'Outpatient': { className: 'bg-secondary text-secondary-foreground border border-border', color: 'text-secondary-foreground' },
+  'Recovery': { className: 'bg-success/10 text-success border border-success/20', color: 'text-success' },
   'Under Treatment': { className: 'bg-warning/10 text-warning border border-warning/20', color: 'text-warning' },
   'Emergency': { className: 'bg-danger/10 text-danger border border-danger/20', color: 'text-danger' },
   'Discharged': { className: 'bg-success/10 text-success border border-success/20', color: 'text-success' },

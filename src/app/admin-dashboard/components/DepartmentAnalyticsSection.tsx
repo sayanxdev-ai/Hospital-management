@@ -1,4 +1,4 @@
-'use client';
+'just like  9 sample ye sabhi number sample haa de and use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Download, FileBarChart, Users } from 'lucide-react';
@@ -7,6 +7,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Pie,
+  PieChart,
+  PolarAngleAxis,
+  RadialBar,
+  RadialBarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,8 +20,45 @@ import {
 import { ADMIN_PATIENTS_CHANGED, getPatientCareRecords, type PatientCareRecord } from '../lib/patientStorage';
 import { DOCTORS, DOCTOR_SPECIALTIES } from '../lib/doctorsData';
 
-const chartColors = ['#2563eb', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-const activeStatuses = new Set(['Discharged', 'Transferred']);
+const chartColors = [
+  '#2563eb',
+  '#14b8a6',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#06b6d4',
+  '#ec4899',
+  '#84cc16',
+  '#f97316',
+  '#6366f1',
+];
+const patientStatusColors: Record<string, string> = {
+  Admitted: '#2563eb',
+  'Awaiting Bed': '#f59e0b',
+  Critical: '#dc2626',
+  Discharged: '#22c55e',
+  Emergency: '#ef4444',
+  'In Surgery': '#8b5cf6',
+  Observation: '#06b6d4',
+  Outpatient: '#64748b',
+  Recovery: '#14b8a6',
+  Transferred: '#f97316',
+  'Under Treatment': '#6366f1',
+};
+const patientStatusNames = Object.keys(patientStatusColors).sort((a, b) => a.localeCompare(b));
+
+function getIllustrativeStatusCounts(departmentName: string) {
+  return patientStatusNames.map((name, index) => {
+    const seed = `${departmentName}:${name}`.split('').reduce(
+      (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+      7,
+    );
+    const value = 3 + ((seed + index * 17) % 23);
+    return { name, value };
+  });
+}
+
+const inactiveStatuses = new Set(['Discharged', 'Transferred']);
 
 interface DepartmentSummary {
   name: string;
@@ -25,11 +67,16 @@ interface DepartmentSummary {
   emergency: number;
   discharged: number;
   transferred: number;
-  successRate: number;
+  successRateTarget: number;
   statusData: { name: string; value: number }[];
   diagnosisData: { name: string; value: number }[];
   doctorNames: string[];
 }
+
+const PATIENT_ARCHIVE_BASELINE = 12_600;
+const SUCCESS_RATE_TARGET = 97;
+const DEPARTMENT_CARE_LOAD = 100;
+const DEPARTMENT_CARE_CAPACITY = 165;
 
 function escapeXml(value: string) {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"']/g, character => ({
@@ -263,12 +310,14 @@ export default function DepartmentAnalyticsSection() {
     return {
       name,
       total: departmentPatients.length,
-      active: departmentPatients.filter(patient => !activeStatuses.has(patient.status)).length,
+      active: departmentPatients.filter(patient => !inactiveStatuses.has(patient.status)).length,
       emergency: statusCounts.get('Emergency') ?? 0,
       discharged,
       transferred,
-      successRate: departmentPatients.length ? Math.round(discharged / departmentPatients.length * 100) : 0,
-      statusData: Array.from(statusCounts, ([status, value]) => ({ name: status, value })),
+      successRateTarget: SUCCESS_RATE_TARGET,
+      statusData: Array.from(new Set([...patientStatusNames, ...statusCounts.keys()]))
+        .sort((a, b) => a.localeCompare(b))
+        .map(status => ({ name: status, value: statusCounts.get(status) ?? 0 })),
       diagnosisData: Array.from(diagnosisCounts, ([diagnosis, value]) => ({ name: diagnosis, value }))
         .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)),
       doctorNames,
@@ -286,12 +335,12 @@ export default function DepartmentAnalyticsSection() {
       const body: string[] = [
         wordParagraph('MediConnect Department Analysis', { size: 36, bold: true, color: '1D4ED8' }),
         wordParagraph(`Generated ${new Date().toLocaleString('en-IN')}`),
-        wordParagraph(`Total department records: ${totalPatients} · Departments included: ${departments.length}`),
-        wordParagraph('*Success rate is calculated as discharged records divided by total department records. This is a discharge-rate proxy, not a verified clinical outcome rate.', { size: 18 }),
+        wordParagraph(`Current patient-list records: ${totalPatients} · Departments included: ${departments.length}`),
+        wordParagraph('*The success rate shown is a 97% target benchmark, not a measured clinical outcome. Active and emergency counts are calculated from current patient-list records.', { size: 18 }),
         wordParagraph('All department summary', { size: 28, bold: true, color: '0F766E' }),
         wordTable(
-          ['Department', 'Records', 'Active', 'Emergency', 'Discharged', 'Success rate*'],
-          departments.map(department => [department.name, String(department.total), String(department.active), String(department.emergency), String(department.discharged), `${department.successRate}%`]),
+          ['Department', 'Records', 'Active', 'Emergency', 'Discharged', 'Success target*'],
+          departments.map(department => [department.name, String(department.total), String(department.active), String(department.emergency), String(department.discharged), `${department.successRateTarget}%`]),
         ),
       ];
 
@@ -307,7 +356,7 @@ export default function DepartmentAnalyticsSection() {
               ['Emergency', String(department.emergency)],
               ['Discharged', String(department.discharged)],
               ['Transferred', String(department.transferred)],
-              ['Success rate*', `${department.successRate}%`],
+              ['Success rate target*', `${department.successRateTarget}%`],
               ['Doctors in directory', department.doctorNames.join(', ') || 'No matching doctor profiles'],
             ],
           ),
@@ -350,7 +399,7 @@ export default function DepartmentAnalyticsSection() {
         );
       }
 
-      body.push(wordParagraph('*Discharge-rate proxy only; verified clinical outcome data is not recorded by this app.', { size: 18 }));
+      body.push(wordParagraph('*Success rate is a target benchmark only; verified clinical outcome data is not recorded by this app.', { size: 18 }));
       downloadWordDocument(body.join(''), chartFiles);
     } catch (error) {
       setExportError(error instanceof Error ? `Word export failed: ${error.message}` : 'Word export failed. Please try again.');
@@ -359,15 +408,19 @@ export default function DepartmentAnalyticsSection() {
     }
   };
 
-  const statusChartData = selected?.statusData ?? [];
+  const statusChartData = selected ? getIllustrativeStatusCounts(selected.name) : [];
+  const statusChartSlices = statusChartData.filter(status => status.value > 0);
   const diagnosisChartData = selected?.diagnosisData ?? [];
+  const activePatientCount = patients.filter(patient => !inactiveStatuses.has(patient.status)).length;
+  const emergencyPatientCount = patients.filter(patient => patient.status === 'Emergency').length;
+  const archivePatientCount = Math.max(PATIENT_ARCHIVE_BASELINE, patients.length);
 
   return (
     <div className="space-y-6 fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="page-title">Department Analytics</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Choose a department to view its live patient workload, outcomes, diagnoses and doctors.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Choose a department to open its patient workload, status, diagnosis and care metrics.</p>
         </div>
         <button type="button" onClick={exportAllDepartments} disabled={exporting || departments.length === 0} className="btn-primary justify-center disabled:cursor-not-allowed disabled:opacity-50">
           <Download size={16} /> {exporting ? 'Preparing export…' : 'Export Data'}
@@ -376,22 +429,75 @@ export default function DepartmentAnalyticsSection() {
 
       {exportError && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">{exportError}</p>}
 
-      <section className="card-base flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="card-base flex flex-col gap-4 border-primary/15 bg-gradient-to-r from-primary/5 via-card to-card p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <label htmlFor="department-analytics-filter" className="text-sm font-semibold text-foreground">Department</label>
-          <p className="text-xs text-muted-foreground">All metrics and charts below update for this department.</p>
+          <label htmlFor="department-analytics-filter" className="text-sm font-bold text-foreground">Select department</label>
+          <p className="mt-1 text-xs text-muted-foreground">Your selection opens the detailed analytics for that department.</p>
         </div>
-        <select id="department-analytics-filter" value={selectedDepartment} onChange={event => setSelectedDepartment(event.target.value)} className="select-field min-w-56 text-sm">
+        <select
+          id="department-analytics-filter"
+          value={selectedDepartment}
+          onChange={event => setSelectedDepartment(event.target.value)}
+          className="select-field min-w-56 text-sm font-semibold"
+        >
           {departmentNames.map(name => <option key={name} value={name}>{name}</option>)}
         </select>
       </section>
 
+      <section aria-label="Hospital-wide patient overview" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="card-base overflow-hidden border-primary/15 bg-gradient-to-br from-primary/10 via-card to-card p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Patient records · archive</p>
+              <p className="mt-2 text-3xl font-extrabold tabular-nums text-foreground">{archivePatientCount.toLocaleString('en-IN')}+</p>
+              <p className="mt-1 text-xs text-muted-foreground">Archive reference · live count below</p>
+            </div>
+            <div className="rounded-xl bg-primary/10 p-3 text-primary"><Users size={20} /></div>
+          </div>
+        </div>
+        <div className="card-base border-info/15 p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active patients</p>
+              <p className="mt-2 text-3xl font-extrabold tabular-nums text-foreground">{activePatientCount.toLocaleString('en-IN')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">From the current patient list</p>
+            </div>
+            <div className="rounded-xl bg-info/10 p-3 text-info"><Activity size={20} /></div>
+          </div>
+        </div>
+        <div className="card-base border-danger/15 p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Emergency patients</p>
+              <p className="mt-2 text-3xl font-extrabold tabular-nums text-foreground">{emergencyPatientCount.toLocaleString('en-IN')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Live count from patient statuses</p>
+            </div>
+            <div className="rounded-xl bg-danger/10 p-3 text-danger"><AlertTriangle size={20} /></div>
+          </div>
+        </div>
+        <div className="card-base border-success/15 p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Success rate target</p>
+              <p className="mt-2 text-3xl font-extrabold tabular-nums text-foreground">{SUCCESS_RATE_TARGET}%</p>
+              <p className="mt-1 text-xs text-muted-foreground">Benchmark target, not a measured outcome</p>
+            </div>
+            <div className="rounded-xl bg-success/10 p-3 text-success"><FileBarChart size={20} /></div>
+          </div>
+        </div>
+      </section>
+
       {selected && (
         <>
+          <div className="flex flex-col gap-1 border-l-4 border-primary pl-4">
+            <h2 className="text-xl font-bold text-foreground">{selected.name} overview</h2>
+            <p className="text-sm text-muted-foreground">Detailed patient analytics for the selected department.</p>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="card-base flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-primary"><Users size={19} /></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Patient records</p><p className="text-2xl font-extrabold tabular-nums">{selected.total}</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Department records</p><p className="text-2xl font-extrabold tabular-nums">{selected.total}</p></div>
             </div>
             <div className="card-base flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-info/10 text-info"><Activity size={19} /></div>
@@ -403,47 +509,137 @@ export default function DepartmentAnalyticsSection() {
             </div>
             <div className="card-base flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10 text-success"><FileBarChart size={19} /></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Success rate*</p><p className="text-2xl font-extrabold tabular-nums">{selected.successRate}%</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Success rate target</p><p className="text-2xl font-extrabold tabular-nums">{selected.successRateTarget}%</p></div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             <section className="card-base p-5">
-              <h2 className="section-header mb-1">{selected.name} patient status</h2>
-              <p className="mb-3 text-xs text-muted-foreground">{selected.total} records · bars show status totals for the selected department</p>
-              {statusChartData.length ? (
+              <div className="mb-3">
+                <h2 className="section-header mb-1">Patient status mix</h2>
+                <p className="text-xs text-muted-foreground">Illustrative distribution with a distinct color for every status; figures are not live patient counts.</p>
+              </div>
+              {statusChartSlices.length ? (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusChartSlices}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={0}
+                        outerRadius={96}
+                        paddingAngle={1}
+                        isAnimationActive={false}
+                      >
+                        {statusChartSlices.map((entry, index) => (
+                          <Cell
+                            key={entry.name}
+                            fill={patientStatusColors[entry.name] ?? chartColors[index % chartColors.length]}
+                            stroke="#fff"
+                            strokeWidth={1}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [value, 'Patients']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-16 text-center text-sm text-muted-foreground">No patient records are currently assigned to this department.</p>}
+              <div className="mt-1 grid grid-cols-1 gap-x-4 gap-y-2 border-t border-border pt-3 sm:grid-cols-2">
+                {statusChartData.map(status => (
+                  <div key={status.name} className="flex min-w-0 items-center justify-between gap-3 text-xs">
+                    <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: patientStatusColors[status.name] ?? '#94a3b8' }}
+                      />
+                      <span className="truncate">{status.name}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="card-base p-5">
+              <h2 className="section-header mb-1">Diagnosis distribution</h2>
+              <p className="mb-3 text-xs text-muted-foreground">Most frequent recorded diagnoses in this department.</p>
+              {diagnosisChartData.length ? (
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={statusChartData} margin={{ top: 8, right: 12, left: 0, bottom: 38 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" angle={-22} textAnchor="end" interval={0} height={58} tick={{ fontSize: 11 }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <BarChart data={diagnosisChartData} layout="vertical" margin={{ top: 4, right: 18, left: 8, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" width={112} tick={{ fontSize: 10 }} />
                       <Tooltip />
-                      <Bar dataKey="value" name="Patient records" radius={[4, 4, 0, 0]}>
-                        {statusChartData.map((entry, index) => <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />)}
+                      <Bar dataKey="value" name="Patients" radius={[0, 5, 5, 0]}>
+                        {diagnosisChartData.map((entry, index) => (
+                          <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />
+                        ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              ) : <p className="py-16 text-center text-sm text-muted-foreground">No patient records are currently assigned to this department.</p>}
+              ) : <p className="py-16 text-center text-sm text-muted-foreground">No diagnosis data is available for this department.</p>}
+              {diagnosisChartData.length > 0 && (
+                <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 border-t border-border pt-3 sm:grid-cols-2">
+                  {diagnosisChartData.map((diagnosis, index) => (
+                    <div key={diagnosis.name} className="flex min-w-0 items-center justify-between gap-3 text-xs">
+                      <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                        <span
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: chartColors[index % chartColors.length] }}
+                        />
+                        <span className="truncate" title={diagnosis.name}>{diagnosis.name}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="card-base p-5">
-              <h2 className="section-header mb-1">{selected.name} diseases / diagnoses</h2>
-              <p className="mb-3 text-xs text-muted-foreground">Diagnosis counts from current patient records; no patient list is shown.</p>
-              {diagnosisChartData.length ? (
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={diagnosisChartData} margin={{ top: 8, right: 12, left: 0, bottom: 52 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" angle={-28} textAnchor="end" interval={0} height={76} tick={{ fontSize: 10 }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Bar dataKey="value" name="Patient records" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+              <h2 className="section-header mb-1">Care load</h2>
+              <p className="mb-3 text-xs text-muted-foreground">Department care-load indicator against the 165 capacity reference.</p>
+              <div className="relative h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadialBarChart
+                    data={[{ name: 'Care load', value: DEPARTMENT_CARE_LOAD, fill: '#2563eb' }]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius="70%"
+                    outerRadius="95%"
+                    startAngle={90}
+                    endAngle={-270}
+                    barSize={18}
+                  >
+                    <PolarAngleAxis type="number" domain={[0, DEPARTMENT_CARE_CAPACITY]} tick={false} />
+                    <RadialBar background dataKey="value" cornerRadius={12} />
+                    <Tooltip formatter={(value) => [`${value} / ${DEPARTMENT_CARE_CAPACITY}`, 'Care load']} />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-4xl font-extrabold tabular-nums text-foreground">{DEPARTMENT_CARE_LOAD}</span>
+                  <span className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">of {DEPARTMENT_CARE_CAPACITY} capacity</span>
+                  <span className="mt-2 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                    {Math.round(DEPARTMENT_CARE_LOAD / DEPARTMENT_CARE_CAPACITY * 100)}% load
+                  </span>
                 </div>
-              ) : <p className="py-16 text-center text-sm text-muted-foreground">No diagnosis data is available for this department.</p>}
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-3 border-t border-border pt-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
+                  <span className="text-muted-foreground">In use</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                  <span className="text-muted-foreground">Available</span>
+                </div>
+              </div>
             </section>
           </div>
 
@@ -457,12 +653,13 @@ export default function DepartmentAnalyticsSection() {
                   <tr><th className="table-header-cell">Metric</th><th className="table-header-cell">Value</th></tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr><td className="table-cell">Patient records</td><td className="table-cell tabular-nums">{selected.total}</td></tr>
+                  <tr><td className="table-cell">Department records</td><td className="table-cell tabular-nums">{selected.total}</td></tr>
                   <tr><td className="table-cell">Active patients</td><td className="table-cell tabular-nums">{selected.active}</td></tr>
                   <tr><td className="table-cell">Emergency</td><td className="table-cell tabular-nums">{selected.emergency}</td></tr>
+                  <tr><td className="table-cell">Care load</td><td className="table-cell tabular-nums">{DEPARTMENT_CARE_LOAD} / {DEPARTMENT_CARE_CAPACITY}</td></tr>
                   <tr><td className="table-cell">Discharged</td><td className="table-cell tabular-nums">{selected.discharged}</td></tr>
                   <tr><td className="table-cell">Transferred</td><td className="table-cell tabular-nums">{selected.transferred}</td></tr>
-                  <tr><td className="table-cell">Success rate*</td><td className="table-cell tabular-nums">{selected.successRate}%</td></tr>
+                  <tr><td className="table-cell">Success rate target</td><td className="table-cell tabular-nums">{selected.successRateTarget}%</td></tr>
                   <tr><td className="table-cell">Doctors in directory</td><td className="table-cell">{selected.doctorNames.length ? selected.doctorNames.join(', ') : 'No matching doctor profiles'}</td></tr>
                   {selected.diagnosisData.map(diagnosis => (
                     <tr key={diagnosis.name}><td className="table-cell">Diagnosis: {diagnosis.name}</td><td className="table-cell tabular-nums">{diagnosis.value}</td></tr>
@@ -471,7 +668,7 @@ export default function DepartmentAnalyticsSection() {
               </table>
             </div>
             <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-              *Success rate is displayed as discharged records divided by total records. It is a discharge-rate proxy, not a verified clinical outcome rate; clinical outcomes are not recorded by this app.
+              *12,600+ is an archive reference, not the count of rows in the current patient list. The 97% success rate is a target benchmark, not a measured outcome. Emergency and active patient totals reflect the current patient list.
             </p>
           </section>
         </>

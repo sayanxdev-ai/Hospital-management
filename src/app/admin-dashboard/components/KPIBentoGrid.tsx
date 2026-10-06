@@ -1,9 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Users, UserCheck, Pill, AlertTriangle, Droplets,
   ClipboardList, Package, Ambulance, TrendingUp, TrendingDown, Minus
 } from 'lucide-react';
+import { ADMIN_PATIENTS_CHANGED, getPatientCareRecords } from '../lib/patientStorage';
 
 type TrendDir = 'up' | 'down' | 'flat';
 
@@ -27,11 +28,11 @@ interface KPICard {
 const kpiCards: KPICard[] = [
   {
     id: 'kpi-admitted',
-    title: 'Currently Admitted',
-    value: 142,
-    subValue: '18 ICU · 24 Emergency',
-    trend: 'up',
-    trendLabel: '+6 since yesterday',
+    title: 'Active Patients',
+    value: 0,
+    subValue: '0 emergency',
+    trend: 'flat',
+    trendLabel: 'Live patient list count',
     icon: Users,
     colorClass: 'text-primary',
     borderClass: 'metric-card-info',
@@ -128,10 +129,10 @@ const kpiCards: KPICard[] = [
   {
     id: 'kpi-emergency',
     title: 'Emergency Patients',
-    value: 8,
-    subValue: '2 critical — ICU',
-    trend: 'up',
-    trendLabel: '+2 in last hour',
+    value: 0,
+    subValue: 'From current patient records',
+    trend: 'flat',
+    trendLabel: 'Live patient list count',
     icon: Ambulance,
     colorClass: 'text-danger',
     borderClass: 'metric-card-danger',
@@ -154,8 +155,40 @@ export default function KPIBentoGrid() {
   // Row 2: 4 regular cards = 4 cols
   // Total: 2 + 1 + 1 + 1 + 1 + 1 + 1 = 8 cards ✓
 
-  const hero = kpiCards[0];
-  const rest = kpiCards.slice(1);
+  const [patientCounts, setPatientCounts] = useState(() => {
+    const records = getPatientCareRecords();
+    return {
+      active: records.filter(patient => patient.status !== 'Discharged' && patient.status !== 'Transferred').length,
+      emergency: records.filter(patient => patient.status === 'Emergency').length,
+    };
+  });
+
+  useEffect(() => {
+    const refreshPatients = () => {
+      const records = getPatientCareRecords();
+      setPatientCounts({
+        active: records.filter(patient => patient.status !== 'Discharged' && patient.status !== 'Transferred').length,
+        emergency: records.filter(patient => patient.status === 'Emergency').length,
+      });
+    };
+    refreshPatients();
+    window.addEventListener(ADMIN_PATIENTS_CHANGED, refreshPatients);
+    window.addEventListener('storage', refreshPatients);
+    return () => {
+      window.removeEventListener(ADMIN_PATIENTS_CHANGED, refreshPatients);
+      window.removeEventListener('storage', refreshPatients);
+    };
+  }, []);
+
+  const displayedCards = kpiCards.map(card => {
+    if (card.id === 'kpi-admitted') {
+      return { ...card, value: patientCounts.active, subValue: `${patientCounts.emergency} emergency` };
+    }
+    if (card.id === 'kpi-emergency') return { ...card, value: patientCounts.emergency };
+    return card;
+  });
+  const hero = displayedCards[0];
+  const rest = displayedCards.slice(1);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

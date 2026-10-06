@@ -7,6 +7,7 @@ import AlertsPanel, { type QuickPurchaseTarget } from './AlertsPanel';
 import ActivityFeed from './ActivityFeed';
 import { addAdminRequest } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
+import { getPatientCareRecords } from '../lib/patientStorage';
 import { getStoredSession } from '@/lib/auth';
 
 const orderItems: Record<QuickPurchaseTarget['type'], string[]> = {
@@ -41,15 +42,19 @@ const orderVendors: Record<QuickPurchaseTarget['type'], string[]> = {
 async function exportDashboardReport() {
   try {
     const XLSX = await import('xlsx');
+    const patients = getPatientCareRecords();
+    const activePatients = patients.filter(patient => patient.status !== 'Discharged' && patient.status !== 'Transferred').length;
+    const emergencyPatients = patients.filter(patient => patient.status === 'Emergency').length;
     const summary = [
-      { 'Metric': 'Currently Admitted', 'Value': 142 },
+      { 'Metric': 'Patient Records (Current List)', 'Value': patients.length },
+      { 'Metric': 'Active Patients', 'Value': activePatients },
+      { 'Metric': 'Emergency Patients', 'Value': emergencyPatients },
       { 'Metric': 'Discharged Today', 'Value': 23 },
       { 'Metric': 'Total Medicines', 'Value': 248 },
       { 'Metric': 'Low Stock Alerts', 'Value': 14 },
       { 'Metric': 'Blood Units Available', 'Value': 1248 },
       { 'Metric': 'Pending Requests', 'Value': 17 },
       { 'Metric': 'Medical Supplies', 'Value': 312 },
-      { 'Metric': 'Emergency Patients', 'Value': 8 },
       { 'Metric': 'Report Generated', 'Value': new Date()?.toLocaleString('en-IN') },
     ];
     const ws = XLSX?.utils?.json_to_sheet(summary);
