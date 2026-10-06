@@ -9,6 +9,7 @@ import { addAdminRequest } from '../lib/adminData';
 import { recordAdminActivity } from '../lib/activityStorage';
 import { getPatientCareRecords } from '../lib/patientStorage';
 import { getStoredSession } from '@/lib/auth';
+import { EMERGENCY_CONTACT_NUMBER } from '@/lib/emergency';
 
 const orderItems: Record<QuickPurchaseTarget['type'], string[]> = {
   medicine: [
@@ -190,7 +191,7 @@ export default function DashboardContent() {
               Buy Supplies
             </button>
             <a
-              href="tel:8625077254"
+              href={`tel:${EMERGENCY_CONTACT_NUMBER}`}
               className="inline-flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm font-semibold text-danger"
             >
               <Phone size={16} />

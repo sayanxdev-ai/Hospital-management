@@ -1,8 +1,9 @@
 import React from 'react';
 import { Phone, Clock, AlertCircle, HeartPulse } from 'lucide-react';
+import { EMERGENCY_CONTACT_NUMBER } from '@/lib/emergency';
 
 const contacts = [
-  { icon: Phone, label: 'Emergency', value: '108', color: 'text-danger', bg: 'bg-danger/10' },
+  { icon: Phone, label: 'Emergency', value: EMERGENCY_CONTACT_NUMBER, color: 'text-danger', bg: 'bg-danger/10' },
   { icon: HeartPulse, label: 'Blood Bank Helpline', value: '1800-180-1104', color: 'text-danger', bg: 'bg-danger/10' },
   { icon: Phone, label: 'MediConnect Support', value: '1800-112-333', color: 'text-primary', bg: 'bg-secondary' },
   { icon: Clock, label: 'Support Hours', value: '24 × 7', color: 'text-accent', bg: 'bg-accent/10' },
@@ -20,15 +21,15 @@ export default function InfoStrip() {
             </div>
             <div>
               <h3 className="font-bold text-white text-lg">Medical Emergency?</h3>
-              <p className="text-white/80 text-sm">Call 108 immediately or use our emergency blood request form</p>
+              <p className="text-white/80 text-sm">Call {EMERGENCY_CONTACT_NUMBER} or use our emergency blood request form</p>
             </div>
           </div>
           <a
-            href="tel:108"
+            href={`tel:${EMERGENCY_CONTACT_NUMBER}`}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-primary font-bold text-sm hover:bg-white/90 transition-colors active:scale-95"
           >
             <Phone size={16} />
-            Call 108 Now
+            Call Emergency Contact
           </a>
         </div>
 

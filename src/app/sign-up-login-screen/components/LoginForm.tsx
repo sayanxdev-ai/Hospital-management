@@ -20,8 +20,8 @@ type DemoCredential = {
 };
 
 const demoCredentials: DemoCredential[] = [
-  { role: 'Admin', email: 'admin@mediconnect.in', password: 'Admin@2026', badge: 'Full Access', badgeColor: 'bg-primary/10 text-primary' },
-  { role: 'Staff', email: 'staff@mediconnect.in', password: 'Staff@2026', badge: 'Clinical', badgeColor: 'bg-accent/10 text-accent' },
+  { role: 'Admin', email: 'admin', password: 'admin@2026', badge: 'Full Access', badgeColor: 'bg-primary/10 text-primary' },
+  { role: 'Staff', email: 'staff', password: 'staff@2026', badge: 'Clinical', badgeColor: 'bg-accent/10 text-accent' },
   { role: 'User', email: 'user@mediconnect.in', password: 'User@2026', badge: 'Patient', badgeColor: 'bg-warning/10 text-warning' },
 ];
 
@@ -72,9 +72,10 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
 
       const { email, role, name } = result.account;
       setStoredSession({ email, role, name });
+      const dashboardPath = role.toLowerCase() === 'staff' ? '/staff-dashboard' : '/admin-dashboard';
       setSuccess(`Signed in as ${role}. Redirecting...`);
       setTimeout(() => {
-        window.location.href = '/admin-dashboard';
+        window.location.href = dashboardPath;
       }, 800);
     } catch (loginError) {
       console.error('Could not verify login in local auth store.', loginError);
@@ -101,16 +102,13 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
 
         {/* Email */}
         <div>
-          <label className="label-text" htmlFor="login-email">Email Address</label>
+          <label className="label-text" htmlFor="login-email">Username or Email</label>
           <input
             id="login-email"
-            type="email"
-            placeholder="you@example.com"
+            type="text"
+            placeholder="Enter any username"
             className={`input-field ${errors.email ? 'border-danger ring-1 ring-danger' : ''}`}
-            {...register('email', {
-              required: 'Email is required',
-              pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Enter a valid email address' }
-            })}
+            {...register('email', { required: 'Username is required' })}
           />
           {errors.email && <p className="error-text">{errors.email.message}</p>}
         </div>
@@ -201,7 +199,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
                   <span className={`badge-base text-xs ${cred.badgeColor}`}>{cred.role}</span>
                   <div>
                     <p className="text-xs font-medium text-foreground">{cred.email}</p>
-                    <p className="text-xs text-muted-foreground">{cred.badge}</p>
+                    <p className="text-xs text-muted-foreground">{cred.badge} · Password: {cred.password}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

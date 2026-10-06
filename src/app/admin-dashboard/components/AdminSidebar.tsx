@@ -121,7 +121,7 @@ export default function AdminSidebar({ collapsed, mobileOpen, onClose, activeSec
                 return (
                   <Link
                     key={`nav-item-${item.label}`}
-                    href={item.href}
+                    href={item.key === 'dashboard' && session?.role?.toLowerCase() === 'staff' ? '/staff-dashboard' : item.href}
                     title={collapsed ? item.label : undefined}
                     className={`
                     flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 text-sm font-medium transition-all duration-150 group relative

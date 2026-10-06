@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { AlertTriangle, Droplets, Pill, Package, X, ChevronRight, Phone } from 'lucide-react';
+import { EMERGENCY_CONTACT_NUMBER } from '@/lib/emergency';
 
 export type QuickPurchaseTarget = {
   type: 'medicine' | 'blood' | 'supplies';
@@ -103,7 +104,7 @@ export default function AlertsPanel({ onQuickAction }: AlertsPanelProps) {
         </h3>
         <div className="flex items-center gap-2">
           <a
-            href="tel:8625077254"
+            href={`tel:${EMERGENCY_CONTACT_NUMBER}`}
             className="inline-flex items-center gap-1 text-xs font-semibold text-danger hover:text-danger/80"
             title="Emergency call"
           >

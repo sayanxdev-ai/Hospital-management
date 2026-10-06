@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import AppLogo from '@/components/ui/AppLogo';
+import { EMERGENCY_CONTACT_NUMBER } from '@/lib/emergency';
 
 export default function PublicFooter() {
   return (
@@ -29,7 +30,7 @@ export default function PublicFooter() {
           <div>
             <h5 className="font-semibold text-white mb-3 text-sm uppercase tracking-wide">Emergency</h5>
             <ul className="space-y-2 text-sm text-white/60">
-              <li>Ambulance: <span className="text-white font-medium">108</span></li>
+              <li>Emergency: <a href={`tel:${EMERGENCY_CONTACT_NUMBER}`} className="text-white font-medium hover:underline">{EMERGENCY_CONTACT_NUMBER}</a></li>
               <li>Blood Bank: <span className="text-white font-medium">1800-180-1104</span></li>
               <li>Support: <span className="text-white font-medium">1800-112-333</span></li>
             </ul>
