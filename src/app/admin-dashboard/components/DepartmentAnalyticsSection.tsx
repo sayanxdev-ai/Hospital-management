@@ -207,7 +207,13 @@ function createZip(files: ZipFile[]) {
   endView.setUint32(12, centralSize, true);
   endView.setUint32(16, localOffset, true);
   endView.setUint16(20, 0, true);
-  return new Blob([...localParts, ...centralParts, end], {
+  const zipParts = [...localParts, ...centralParts, end].map(part => {
+    const copy = new Uint8Array(part.length);
+    copy.set(part);
+    return copy.buffer;
+  });
+
+  return new Blob(zipParts, {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
 }
