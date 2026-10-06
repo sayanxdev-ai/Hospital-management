@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Download, Plus, Eye, Edit2, Trash2, X, Check, ChevronUp, ChevronDown, User, Phone, Mail, MapPin, Droplets, Pill } from 'lucide-react';
+import { Search, Download, Plus, Eye, Edit2, Trash2, X, Check, ChevronUp, ChevronDown, User, Phone, Mail, MapPin, Droplets, Pill, CreditCard, Banknote, Receipt } from 'lucide-react';
 import { ADMIN_PATIENTS_CHANGED, PATIENTS_STORAGE_KEY } from '../lib/patientStorage';
 import { recordAdminActivity } from '../lib/activityStorage';
 import { DOCTORS, DOCTOR_SPECIALTIES } from '../lib/doctorsData';
@@ -18,6 +18,20 @@ type PatientStatus =
   | 'Transferred'
   | 'Under Treatment';
 type Gender = 'Male' | 'Female' | 'Other';
+type PaymentMethod = 'Card' | 'UPI' | 'Cash';
+
+interface BillLineItem {
+  description: string;
+  amount: number;
+}
+
+interface PatientBill {
+  items: BillLineItem[];
+  total: number;
+  paymentStatus: 'Paid' | 'Unpaid';
+  paymentMethod?: PaymentMethod;
+  paidAt?: string;
+}
 
 interface Patient {
   id: string;
@@ -39,6 +53,7 @@ interface Patient {
   medicines: string;
   diagnosis: string;
   emergencyContact: string;
+  bill?: PatientBill;
 }
 
 const initialPatients: Patient[] = [
@@ -72,6 +87,158 @@ const statusConfig: Record<PatientStatus, { className: string; color: string }> 
   'Discharged': { className: 'bg-success/10 text-success border border-success/20', color: 'text-success' },
   'Transferred': { className: 'bg-muted text-muted-foreground border border-border', color: 'text-muted-foreground' },
 };
+
+const sampleRooms = Array.from({ length: 9 }, (_, index) => `Room-${101 + index}`);
+const roomOccupyingStatuses = new Set<PatientStatus>([
+  'Admitted',
+  'Critical',
+  'Emergency',
+  'In Surgery',
+  'Observation',
+  'Recovery',
+  'Under Treatment',
+]);
+
+function assignAvailableRoom(patient: Patient, patients: Patient[]): Patient | null {
+  if (patient.status !== 'Admitted') return patient;
+
+  const occupiedRooms = new Set(
+    patients
+      .filter(existing => existing.id !== patient.id && roomOccupyingStatuses.has(existing.status))
+      .map(existing => existing.room.trim())
+      .filter(Boolean),
+  );
+  const currentRoom = patient.room.trim();
+
+  if (currentRoom && (!sampleRooms.includes(currentRoom) || !occupiedRooms.has(currentRoom))) {
+    return patient;
+  }
+
+  const availableRoom = sampleRooms.find(room => !occupiedRooms.has(room));
+  return availableRoom ? { ...patient, room: availableRoom } : null;
+}
+
+function createDischargeBill(patient: Patient): PatientBill {
+  const admittedAt = new Date(`${patient.admissionDate}T00:00:00`);
+  const today = new Date();
+  const daysAdmitted = Number.isNaN(admittedAt.getTime())
+    ? 1
+    : Math.max(1, Math.ceil((today.getTime() - admittedAt.getTime()) / 86_400_000));
+  const dailyRoomRate = patient.room.toLowerCase().includes('icu') ? 5000 : 2500;
+  const items = [
+    { description: `Room charges (${daysAdmitted} day${daysAdmitted === 1 ? '' : 's'})`, amount: dailyRoomRate * daysAdmitted },
+    { description: `Nursing care (${daysAdmitted} day${daysAdmitted === 1 ? '' : 's'})`, amount: 800 * daysAdmitted },
+    { description: 'Doctor consultation', amount: 1500 },
+    { description: 'Diagnostics and laboratory', amount: 2000 },
+    { description: 'Medicines and supplies', amount: 1200 },
+  ];
+
+  return {
+    items,
+    total: items.reduce((total, item) => total + item.amount, 0),
+    paymentStatus: 'Unpaid',
+  };
+}
+
+function DischargeBillingDialog({
+  patient,
+  bill,
+  alreadyDischarged,
+  onPay,
+  onDischargeUnpaid,
+  onCancel,
+}: {
+  patient: Patient;
+  bill: PatientBill;
+  alreadyDischarged: boolean;
+  onPay: (method: PaymentMethod) => void;
+  onDischargeUnpaid: () => void;
+  onCancel: () => void;
+}) {
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Card');
+  const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
+
+  return (
+    <div className="fixed inset-0 bg-foreground/60 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="discharge-billing-title"
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <div>
+            <h2 id="discharge-billing-title" className="text-lg font-bold text-foreground">Discharge bill</h2>
+            <p className="text-sm text-muted-foreground">{patient.name} · {patient.patientId}</p>
+          </div>
+          <button type="button" onClick={onCancel} className="btn-icon text-muted-foreground hover:text-foreground" aria-label="Close discharge bill">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="flex items-center gap-2 bg-muted/50 px-4 py-3 text-sm font-semibold">
+              <Receipt size={16} /> Expenses and bills
+            </div>
+            <div className="divide-y divide-border px-4">
+              {bill.items.map(item => (
+                <div key={item.description} className="flex justify-between gap-4 py-3 text-sm">
+                  <span className="text-muted-foreground">{item.description}</span>
+                  <span className="font-medium tabular-nums whitespace-nowrap">{formatCurrency(item.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between border-t border-border bg-muted/30 px-4 py-3 font-bold">
+              <span>Total due</span>
+              <span className="tabular-nums">{formatCurrency(bill.total)}</span>
+            </div>
+          </div>
+
+          <fieldset>
+            <legend className="mb-2 text-sm font-semibold">Payment method</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { method: 'Card', label: 'Card', Icon: CreditCard },
+                { method: 'UPI', label: 'UPI', Icon: Receipt },
+                { method: 'Cash', label: 'Cash', Icon: Banknote },
+              ] as const).map(({ method, label, Icon }) => (
+                <button
+                  key={method}
+                  type="button"
+                  aria-pressed={paymentMethod === method}
+                  onClick={() => setPaymentMethod(method)}
+                  className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium ${paymentMethod === method ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:bg-muted'}`}
+                >
+                  <Icon size={16} /> {label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <p className="rounded-lg bg-warning/10 p-3 text-xs text-muted-foreground">
+            Sample estimate for demonstration only. Payments are recorded in this app; no real charge is processed and no card details are collected.
+          </p>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={onCancel} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">
+              {alreadyDischarged ? 'Close bill' : 'Cancel discharge'}
+            </button>
+            {!alreadyDischarged && (
+              <button type="button" onClick={onDischargeUnpaid} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">
+                Discharge — pay later
+              </button>
+            )}
+            <button type="button" onClick={() => onPay(paymentMethod)} className="btn-primary px-4 py-2 text-sm">
+              {alreadyDischarged ? 'Pay outstanding balance' : 'Pay all & discharge'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface PatientModalProps {
   patient: Patient | null;
@@ -260,6 +427,7 @@ export default function PatientsSection() {
   const [deptFilter, setDeptFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<'All' | PatientStatus>('All');
   const [modal, setModal] = useState<{ mode: 'view' | 'edit' | 'add'; patient: Patient | null } | null>(null);
+  const [pendingDischarge, setPendingDischarge] = useState<{ patient: Patient; bill: PatientBill } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'danger' } | null>(null);
   const [sortField, setSortField] = useState<keyof Patient>('patientId');
@@ -294,6 +462,40 @@ export default function PatientsSection() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const openDischargeBilling = (patient: Patient) => {
+    setPendingDischarge({
+      patient,
+      bill: patient.bill ?? createDischargeBill(patient),
+    });
+    setModal(null);
+  };
+
+  const completeDischarge = (paymentMethod?: PaymentMethod) => {
+    if (!pendingDischarge) return;
+
+    const { patient, bill } = pendingDischarge;
+    const isPaid = Boolean(paymentMethod);
+    const dischargedPatient: Patient = {
+      ...patient,
+      status: 'Discharged',
+      dischargeDate: patient.dischargeDate || new Date().toISOString().split('T')[0],
+      bill: {
+        ...bill,
+        paymentStatus: isPaid ? 'Paid' : 'Unpaid',
+        ...(paymentMethod ? { paymentMethod, paidAt: new Date().toISOString() } : {}),
+      },
+    };
+
+    setPatients(prev => prev.map(existing => existing.id === patient.id ? dischargedPatient : existing));
+    recordAdminActivity({
+      category: 'patient',
+      tone: isPaid ? 'success' : 'warning',
+      message: `Patient ${patient.name} discharged with a ${isPaid ? 'paid' : 'unpaid'} bill of ₹${bill.total.toLocaleString('en-IN')}${paymentMethod ? ` via ${paymentMethod}` : ''}.`,
+    });
+    setPendingDischarge(null);
+    showToast(isPaid ? `Payment recorded via ${paymentMethod}; patient discharged` : 'Patient discharged with payment pending');
+  };
+
   const departments = ['All', ...Array.from(new Set(patients.map(p => p.department))).sort()];
 
   const filtered = useMemo(() => {
@@ -319,25 +521,36 @@ export default function PatientsSection() {
 
   const handleSave = (p: Patient) => {
     const previousPatient = patients.find(patient => patient.id === p.id);
+    if (previousPatient && previousPatient.status !== 'Discharged' && p.status === 'Discharged') {
+      openDischargeBilling(p);
+      return;
+    }
+
+    const patientWithRoom = assignAvailableRoom(p, patients);
+    if (!patientWithRoom) {
+      showToast('No vacant rooms are available. The patient cannot be admitted.', 'danger');
+      return;
+    }
+
     const action = modal?.mode === 'add' ? 'added' : 'updated';
     recordAdminActivity({
       category: 'patient',
-      tone: p.status === 'Emergency' ? 'danger' : 'success',
-      message: `Patient ${action}: ${p.name} (${p.status})${p.doctor ? `, assigned to ${p.doctor}` : ''}.`,
+      tone: patientWithRoom.status === 'Emergency' ? 'danger' : 'success',
+      message: `Patient ${action}: ${patientWithRoom.name} (${patientWithRoom.status})${patientWithRoom.doctor ? `, assigned to ${patientWithRoom.doctor}` : ''}.`,
     });
-    if (p.doctor && p.doctor !== previousPatient?.doctor) {
+    if (patientWithRoom.doctor && patientWithRoom.doctor !== previousPatient?.doctor) {
       recordAdminActivity({
         category: 'doctor',
         tone: 'info',
-        message: `${p.doctor} assigned to patient ${p.name}; doctor availability reflects active patient assignments.`,
+        message: `${patientWithRoom.doctor} assigned to patient ${patientWithRoom.name}; doctor availability reflects active patient assignments.`,
       });
     }
     if (modal?.mode === 'add') {
-      setPatients(prev => [p, ...prev]);
-      showToast('Patient added successfully');
+      setPatients(prev => [patientWithRoom, ...prev]);
+      showToast(`Patient added successfully${patientWithRoom.room !== p.room ? ` — assigned ${patientWithRoom.room}` : ''}`);
     } else {
-      setPatients(prev => prev.map(x => x.id === p.id ? p : x));
-      showToast('Patient updated successfully');
+      setPatients(prev => prev.map(x => x.id === patientWithRoom.id ? patientWithRoom : x));
+      showToast(`Patient updated successfully${patientWithRoom.room !== p.room ? ` — assigned ${patientWithRoom.room}` : ''}`);
     }
     setModal(null);
   };
@@ -358,9 +571,20 @@ export default function PatientsSection() {
 
   const handleStatusChange = (id: string, status: PatientStatus) => {
     const changedPatient = patients.find(patient => patient.id === id);
+    if (changedPatient && status === 'Discharged' && changedPatient.status !== 'Discharged') {
+      openDischargeBilling(changedPatient);
+      return;
+    }
+
+    const updatedPatient = changedPatient && assignAvailableRoom({ ...changedPatient, status }, patients);
+    if (changedPatient && !updatedPatient) {
+      showToast('No vacant rooms are available. The patient cannot be admitted.', 'danger');
+      return;
+    }
+
     setPatients(prev => prev.map(p => {
       if (p.id !== id) return p;
-      const updated = { ...p, status };
+      const updated = updatedPatient ?? { ...p, status };
       if (status === 'Discharged' && !p.dischargeDate) {
         updated.dischargeDate = new Date().toISOString().split('T')[0];
       }
@@ -380,7 +604,7 @@ export default function PatientsSection() {
         });
       }
     }
-    showToast(`Status updated to ${status}`);
+    showToast(`Status updated to ${status}${updatedPatient && updatedPatient.room !== changedPatient?.room ? ` — assigned ${updatedPatient.room}` : ''}`);
   };
 
   const exportToExcel = async () => {
@@ -404,6 +628,9 @@ export default function PatientsSection() {
         'Status': p.status,
         'Admission Date': p.admissionDate,
         'Discharge Date': p.dischargeDate || 'N/A',
+        'Bill Total (₹)': p.bill?.total ?? '',
+        'Payment Status': p.bill?.paymentStatus ?? 'N/A',
+        'Payment Method': p.bill?.paymentMethod ?? 'N/A',
         'Emergency Contact': p.emergencyContact,
       }));
 
@@ -413,7 +640,8 @@ export default function PatientsSection() {
       ws['!cols'] = [
         { wch: 10 }, { wch: 22 }, { wch: 6 }, { wch: 8 }, { wch: 28 }, { wch: 18 },
         { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 22 },
-        { wch: 35 }, { wch: 45 }, { wch: 16 }, { wch: 15 }, { wch: 15 }, { wch: 18 },
+        { wch: 35 }, { wch: 45 }, { wch: 16 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
+        { wch: 15 }, { wch: 15 }, { wch: 18 },
       ];
 
       const wb = XLSX.utils.book_new();
@@ -528,6 +756,7 @@ export default function PatientsSection() {
                   { label: 'Age/Gender', field: 'age' as keyof Patient },
                   { label: 'Blood Group', field: 'bloodGroup' as keyof Patient },
                   { label: 'Department', field: 'department' as keyof Patient },
+                  { label: 'Room No.', field: 'room' as keyof Patient },
                   { label: 'Doctor', field: 'doctor' as keyof Patient },
                   { label: 'Diagnosis', field: 'diagnosis' as keyof Patient },
                   { label: 'Status', field: 'status' as keyof Patient },
@@ -540,13 +769,14 @@ export default function PatientsSection() {
                     </div>
                   </th>
                 ))}
+                <th className="table-header-cell">Bill / Payment</th>
                 <th className="table-header-cell">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="table-cell text-center text-muted-foreground py-16">
+                  <td colSpan={12} className="table-cell text-center text-muted-foreground py-16">
                     <div className="flex flex-col items-center gap-2">
                       <Search size={32} className="text-muted-foreground/30" />
                       <p className="font-medium">No patients found</p>
@@ -576,6 +806,7 @@ export default function PatientsSection() {
                         </span>
                       </td>
                       <td className="table-cell text-sm whitespace-nowrap">{p.department}</td>
+                      <td className="table-cell text-sm font-medium whitespace-nowrap">{p.room || '—'}</td>
                       <td className="table-cell text-sm text-muted-foreground whitespace-nowrap">{p.doctor}</td>
                       <td className="table-cell text-sm text-muted-foreground max-w-[160px] truncate" title={p.diagnosis}>{p.diagnosis}</td>
                       <td className="table-cell">
@@ -588,6 +819,24 @@ export default function PatientsSection() {
                         </select>
                       </td>
                       <td className="table-cell text-xs text-muted-foreground whitespace-nowrap">{p.admissionDate}</td>
+                      <td className="table-cell">
+                        {p.bill?.paymentStatus === 'Paid' ? (
+                          <span className="badge-base whitespace-nowrap bg-success/10 text-success border border-success/20">
+                            Paid · ₹{p.bill.total.toLocaleString('en-IN')}
+                          </span>
+                        ) : p.bill?.paymentStatus === 'Unpaid' ? (
+                          <button
+                            type="button"
+                            onClick={() => openDischargeBilling(p)}
+                            className="badge-base whitespace-nowrap bg-warning/10 text-warning border border-warning/20 hover:bg-warning/20"
+                            title="Open unpaid bill"
+                          >
+                            Pay ₹{p.bill.total.toLocaleString('en-IN')}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not billed</span>
+                        )}
+                      </td>
                       <td className="table-cell">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setModal({ mode: 'view', patient: p })} className="btn-icon text-muted-foreground hover:text-primary" title="View">
@@ -639,6 +888,16 @@ export default function PatientsSection() {
           mode={modal.mode}
           onClose={() => setModal(null)}
           onSave={handleSave}
+        />
+      )}
+      {pendingDischarge && (
+        <DischargeBillingDialog
+          patient={pendingDischarge.patient}
+          bill={pendingDischarge.bill}
+          alreadyDischarged={pendingDischarge.patient.status === 'Discharged'}
+          onCancel={() => setPendingDischarge(null)}
+          onDischargeUnpaid={() => completeDischarge()}
+          onPay={method => completeDischarge(method)}
         />
       )}
     </div>
